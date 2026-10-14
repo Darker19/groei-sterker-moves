@@ -72,30 +72,29 @@ function mijnAccountHtml(){
   return `<section class="panel">
     <button class="fold" data-act="fold" data-k="mijn-acc" aria-expanded="${open}">${CHEV}<h2>Mijn account</h2></button>
     ${open?`<form id="mijn-acc-form" class="mijn-acc" autocomplete="on">
-      <p class="lede" style="font-size:.92rem;margin:0">Je gebruikersnaam is <b>${esc(gebruiker?.email||'')}</b>. Vul alleen in wat je wilt veranderen.</p>
-      <label class="field"><span>Nieuwe gebruikersnaam (mag leeg blijven)</span><input id="ma-login" maxlength="40" autocapitalize="none" spellcheck="false" autocomplete="username"></label>
-      <label class="field"><span>Nieuw wachtwoord (minstens 8 tekens)</span><input id="ma-ww" type="password" autocomplete="new-password"></label>
-      <label class="field"><span>Nieuw wachtwoord nog een keer</span><input id="ma-ww2" type="password" autocomplete="new-password"></label>
+      <p class="lede" style="font-size:.92rem;margin:0">Je gebruikersnaam is <b>${esc(gebruiker?.email||'')}</b>. Hier kun je een nieuw wachtwoord kiezen.</p>
+      <input type="hidden" autocomplete="username" value="${esc(gebruiker?.email||'')}">
       <label class="field"><span>Je huidige wachtwoord</span><input id="ma-oud" type="password" autocomplete="current-password" required></label>
+      <label class="field"><span>Nieuw wachtwoord (minstens 8 tekens)</span><input id="ma-ww" type="password" autocomplete="new-password" required></label>
+      <label class="field"><span>Nieuw wachtwoord nog een keer</span><input id="ma-ww2" type="password" autocomplete="new-password" required></label>
       <p class="imp-fout" id="ma-fout" role="alert" hidden></p>
-      <button class="btn" style="align-self:flex-start">Opslaan</button></form>`:''}
+      <button class="btn" style="align-self:flex-start">Wachtwoord veranderen</button></form>`:''}
   </section>`;
 }
 const MA_FOUT={onjuist:'Je huidige wachtwoord klopt niet.','te-vaak':'Te veel pogingen. Probeer het over een kwartier opnieuw.',
-  'te-kort':'Kies een wachtwoord van minstens 8 tekens.','ongeldige-login':ACC_FOUT['ongeldige-login'],
-  'bestaat-al':'Deze gebruikersnaam is al in gebruik. Kies een andere.','geen-verbinding':'Geen verbinding met de server.'};
+  'te-kort':'Kies een wachtwoord van minstens 8 tekens.','zelfde':'Je nieuwe wachtwoord moet anders zijn dan je huidige.',
+  'geen-verbinding':'Geen verbinding met de server.'};
 document.addEventListener('submit',async ev=>{
   if(ev.target.id!=='mijn-acc-form')return;ev.preventDefault();
   const f=$('#ma-fout'), fout=t=>{f.textContent=t;f.hidden=false};
-  const login=$('#ma-login').value.trim().toLowerCase(), ww=$('#ma-ww').value;
-  if(!login&&!ww)return fout('Vul een nieuwe gebruikersnaam of een nieuw wachtwoord in.');
-  if(ww&&ww.length<8)return fout(MA_FOUT['te-kort']);
+  const oud=$('#ma-oud').value, ww=$('#ma-ww').value;
+  if(ww.length<8)return fout(MA_FOUT['te-kort']);
   if(ww!==$('#ma-ww2').value)return fout('De twee nieuwe wachtwoorden zijn niet gelijk.');
+  if(ww===oud)return fout(MA_FOUT.zelfde);
   const knop=ev.target.querySelector('button');knop.disabled=true;knop.textContent='Bezig…';
-  const r=await Opslag.mijnAccount($('#ma-oud').value,login,ww);
-  if(r.status!==200){knop.disabled=false;knop.textContent='Opslaan';fout(MA_FOUT[r.fout]||'Dat lukte niet. Probeer het later opnieuw.');return}
-  gebruiker.email=r.login;folded['mijn-acc']=false;saveFold();render();
-  toast(ww&&login?'Je gebruikersnaam en wachtwoord zijn veranderd':ww?'Je wachtwoord is veranderd':'Je gebruikersnaam is veranderd');
+  const r=await Opslag.mijnWachtwoord(oud,ww);
+  if(r.status!==200){knop.disabled=false;knop.textContent='Wachtwoord veranderen';fout(MA_FOUT[r.fout]||'Dat lukte niet. Probeer het later opnieuw.');return}
+  folded['mijn-acc']=false;saveFold();render();toast('Je wachtwoord is veranderd');
 });
 
 /* ---------- Ontwikkelaar-account (therapeut) ---------- */

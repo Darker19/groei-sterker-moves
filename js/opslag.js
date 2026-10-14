@@ -7,7 +7,7 @@
 //   laad()             -> {gegevens, afgevinkt} (therapeut, na inloggen)
 //   laadMijn()         -> eigen schema van de cliënt;  bewaarVoortgang({datum, afgevinkt, beoordelingen})
 //   accounts(), accountMaak(id, login), accountReset(id), accountWeg(id)   cliënt-accounts (therapeut)
-//   mijnAccount(oud, login, wachtwoord)                                     cliënt wijzigt eigen gebruikersnaam/wachtwoord
+//   mijnWachtwoord(oud, wachtwoord)                                         cliënt wijzigt eigen wachtwoord
 //   bewaarGegevens(S), bewaarAfgevinkt(d)       opslaan (op de server met een korte vertraging, zodat snelle wijzigingen samen gaan)
 //   opStatus(fn)       fn('bezig'|'opgeslagen'|'fout'|'conflict'|'uitgelogd')
 // Server: de PHP-API in api/ (Hostnet). Wil je later naar bijvoorbeeld Supabase, dan vervang je alleen dit bestand.
@@ -81,7 +81,7 @@ const Opslag=(()=>{
     accountMaak:(client_id,login)=>post('account-maak',{client_id,login}),
     accountReset:client_id=>post('account-reset',{client_id}),
     accountWeg:client_id=>post('account-weg',{client_id}),
-    mijnAccount:(oud,login,wachtwoord)=>post('mijn-account',{oud,login,wachtwoord}),
+    mijnWachtwoord:(oud,wachtwoord)=>post('mijn-wachtwoord',{oud,wachtwoord}),
     devAccount:()=>post('dev-account'),
     devMaak:login=>post('dev-maak',{login}),
     devReset:()=>post('dev-reset',{}),

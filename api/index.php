@@ -19,7 +19,7 @@
 // Cliënt:
 //   GET  mijn                             -> {client, schema, kaarten, cats, vandaag}  (alleen het eigen schema)
 //   POST voortgang {datum, afgevinkt, beoordelingen}
-//   POST mijn-account {oud, login?, wachtwoord?}  -> {login}   eigen gebruikersnaam en/of wachtwoord wijzigen
+//   POST mijn-wachtwoord {oud, wachtwoord}  eigen wachtwoord wijzigen (de gebruikersnaam kan alleen de therapeut kiezen)
 require __DIR__ . '/lib.php';
 
 $actie = $_GET['a'] ?? '';
@@ -316,7 +316,7 @@ if ($actie === 'voortgang') {
   antwoord(['ok' => true]);
 }
 
-if ($actie === 'mijn-account') {
+if ($actie === 'mijn-wachtwoord') {
   eis_app_verzoek();
   $g = eis_client();
   $in = invoer();
@@ -327,26 +327,18 @@ if ($actie === 'mijn-account') {
   if ((int)$q->fetchColumn() >= MAX_POGINGEN) antwoord(['fout' => 'te-vaak'], 429);
   $q = $db->prepare('SELECT wachtwoord FROM gebruikers WHERE id = ?');
   $q->execute([$g['id']]);
-  if (!password_verify((string)($in['oud'] ?? ''), $q->fetchColumn())) {
+  $hash = $q->fetchColumn();
+  if (!password_verify((string)($in['oud'] ?? ''), $hash)) {
     $db->prepare('INSERT INTO inlogpogingen (ip, email, tijd) VALUES (?, ?, ?)')->execute([client_ip(), $g['email'], nu()]);
     antwoord(['fout' => 'onjuist'], 401);
   }
-  $login = strtolower(trim((string)($in['login'] ?? '')));
   $ww = (string)($in['wachtwoord'] ?? '');
-  if ($login !== '' && $login !== $g['email']) {
-    if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $login)) antwoord(['fout' => 'ongeldige-login'], 400);
-    $q = $db->prepare('SELECT COUNT(*) FROM gebruikers WHERE email = ?');
-    $q->execute([$login]);
-    if ((int)$q->fetchColumn() > 0) antwoord(['fout' => 'bestaat-al'], 409);
-    $db->prepare('UPDATE gebruikers SET email = ? WHERE id = ?')->execute([$login, $g['id']]);
-  } else $login = $g['email'];
-  if ($ww !== '') {
-    if (strlen($ww) < 8) antwoord(['fout' => 'te-kort'], 400);
-    $db->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
-    // andere apparaten uitloggen, dit apparaat blijft ingelogd
-    $db->prepare('DELETE FROM sessies WHERE gebruiker_id = ? AND token_hash <> ?')->execute([$g['id'], hash('sha256', $_COOKIE[SESSIE_COOKIE])]);
-  }
-  antwoord(['login' => $login]);
+  if (strlen($ww) < 8) antwoord(['fout' => 'te-kort'], 400);
+  if (password_verify($ww, $hash)) antwoord(['fout' => 'zelfde'], 400);
+  $db->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
+  // andere apparaten uitloggen, dit apparaat blijft ingelogd
+  $db->prepare('DELETE FROM sessies WHERE gebruiker_id = ? AND token_hash <> ?')->execute([$g['id'], hash('sha256', $_COOKIE[SESSIE_COOKIE])]);
+  antwoord(['ok' => true]);
 }
 
 if ($actie === 'wachtwoord') {
