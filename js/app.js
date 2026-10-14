@@ -125,7 +125,9 @@ const demoBalk=()=>modus==='demo'?`<p class="demo-balk" role="note"><b>Demo</b> 
   :modus==='dev'?`<p class="demo-balk" role="note"><b>Ontwikkelaar</b> · Je ziet de echte oefeningen en schema's met je eigen testcliënten. Alleen de testcliënten worden opgeslagen; wijzigingen aan oefeningen en schema's niet (herladen zet ze terug).</p>`:'';
 function voetTekst(){
   const st={bezig:'Opslaan…',opgeslagen:'Opgeslagen ✓',fout:'Niet opgeslagen, nieuwe poging volgt…'}[opslagStatus]||'';
-  $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&['server','client','dev'].includes(modus)?`ingelogd als ${gebruiker.naam}`:'',modus==='server'||modus==='client'?st:''].filter(Boolean).join(' · ');
+  // alleen voor de therapeut, de ontwikkelaar en de demo; cliënten (en het inlogscherm) zien geen versie- of inlogregel
+  if(!['server','dev','demo'].includes(modus)){$('#versie').textContent='';return}
+  $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&modus!=='demo'?`ingelogd als ${gebruiker.naam}`:'',modus!=='demo'?st:''].filter(Boolean).join(' · ');
 }
 
 /* ---------- Inloggen ---------- */
