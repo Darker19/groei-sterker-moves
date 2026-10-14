@@ -28,6 +28,7 @@ if ($actie === 'sessie') {
   // eerst controleren of de server is ingesteld en de database bereikbaar is (anders 503: de app draait dan als demo)
   instellingen();
   werk_database_bij();
+  versleutel_bestaande();
   $g = huidige_gebruiker();
   antwoord($g ? ['ingelogd' => true, 'naam' => $g['naam'], 'email' => $g['email'], 'rol' => $g['rol']] : ['ingelogd' => false]);
 }
@@ -94,6 +95,8 @@ if ($actie === 'gegevens') {
     $q = db()->prepare('SELECT client_id, datum, afgevinkt, beoordelingen FROM client_dagen WHERE client_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
     $q->execute($ids);
     foreach ($q->fetchAll() as $d) {
+      $d['afgevinkt'] = ontsleutel($d['afgevinkt']);
+      $d['beoordelingen'] = ontsleutel($d['beoordelingen']);
       $afgevinkt[$d['client_id'] . ':' . $d['datum']] = json_decode($d['afgevinkt']) ?: new stdClass();
       $gegevens['ratings'] = array_values(array_filter($gegevens['ratings'] ?? [], function ($x) use ($d) {
         return !(($x['c'] ?? '') === $d['client_id'] && ($x['d'] ?? '') === $d['datum']);
@@ -113,8 +116,8 @@ if ($actie === 'bewaar') {
   $clients = is_array($in['gegevens']['clients'] ?? null) ? $in['gegevens']['clients'] : [];
   // ontwikkelaar: alleen de testcliënten en hun beoordelingen bewaren; oefeningen en schema's blijven van de therapeut
   $data = $rij === RIJ_ONTWIKKELAAR ? ['clients' => $clients, 'ratings' => $in['gegevens']['ratings'] ?? []] : $in['gegevens'];
-  $gegevens = json_encode($data, JSON_UNESCAPED_UNICODE);
-  $afgevinkt = json_encode(isset($in['afgevinkt']) && is_array($in['afgevinkt']) && $in['afgevinkt'] ? $in['afgevinkt'] : new stdClass(), JSON_UNESCAPED_UNICODE);
+  $gegevens = versleutel(json_encode($data, JSON_UNESCAPED_UNICODE));
+  $afgevinkt = versleutel(json_encode(isset($in['afgevinkt']) && is_array($in['afgevinkt']) && $in['afgevinkt'] ? $in['afgevinkt'] : new stdClass(), JSON_UNESCAPED_UNICODE));
   $versie = (int)($in['versie'] ?? -1);
   $db = db();
   if ($versie === 0) {
@@ -285,7 +288,7 @@ if ($actie === 'mijn') {
   $q = db()->prepare('SELECT datum, afgevinkt, beoordelingen FROM client_dagen WHERE client_id = ? AND datum >= ?');
   $q->execute([$g['client_id'], date('Y-m-d', strtotime('-2 days'))]);
   $dagen = [];
-  foreach ($q->fetchAll() as $d) $dagen[$d['datum']] = ['afgevinkt' => json_decode($d['afgevinkt']) ?: new stdClass(), 'beoordelingen' => json_decode($d['beoordelingen'], true) ?: []];
+  foreach ($q->fetchAll() as $d) $dagen[$d['datum']] = ['afgevinkt' => json_decode(ontsleutel($d['afgevinkt'])) ?: new stdClass(), 'beoordelingen' => json_decode(ontsleutel($d['beoordelingen']), true) ?: []];
   antwoord([
     'client' => ['id' => $c['id'], 'name' => $g['naam']],
     'schema' => $schema,
@@ -312,7 +315,7 @@ if ($actie === 'voortgang') {
   }
   if (count($af) > 200 || count($bo) > 200) antwoord(['fout' => 'te-groot'], 413);
   db()->prepare('REPLACE INTO client_dagen (client_id, datum, afgevinkt, beoordelingen, gewijzigd) VALUES (?, ?, ?, ?, ?)')
-      ->execute([$g['client_id'], $datum, json_encode($af ?: new stdClass()), json_encode($bo), nu()]);
+      ->execute([$g['client_id'], $datum, versleutel(json_encode($af ?: new stdClass())), versleutel(json_encode($bo)), nu()]);
   antwoord(['ok' => true]);
 }
 

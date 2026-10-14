@@ -129,12 +129,14 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASS: ${{ secrets.DB_PASS }}
           SETUP_CODE: ${{ secrets.SETUP_CODE }}
+          DATA_KEY: ${{ secrets.DATA_KEY }}
         run: |
           # Nog geen database ingesteld? Dan geen config.php: de app draait dan als demo (opslag in de browser)
           if [ -z "$DB_HOST" ]; then echo "::notice::Geen database-secrets: API niet ingesteld, app draait als demo"; exit 0; fi
           php -r '
             $c = ["db_host"=>getenv("DB_HOST"), "db_name"=>getenv("DB_NAME"), "db_user"=>getenv("DB_USER"),
-                  "db_pass"=>getenv("DB_PASS"), "setup_code"=>getenv("SETUP_CODE"), "cookie_secure"=>true];
+                  "db_pass"=>getenv("DB_PASS"), "setup_code"=>getenv("SETUP_CODE"), "data_key"=>(string)getenv("DATA_KEY"), "cookie_secure"=>true];
+            if ($c["data_key"] !== "" && strlen((string)base64_decode($c["data_key"], true)) !== 32) { fwrite(STDERR, "DATA_KEY moet base64 van 32 bytes zijn (openssl rand -base64 32)\n"); exit(1); }
             foreach (["db_host","db_name","db_user"] as $k) if ($c[$k] === "" || $c[$k] === false) { fwrite(STDERR, "Secret ontbreekt: ".strtoupper($k)."\n"); exit(1); }
             file_put_contents("site/api/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
           php -l site/api/config.php

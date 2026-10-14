@@ -48,7 +48,7 @@ const CHEV=`<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M5
 const foldHead=(k,inner)=>`<button class="fold" data-act="fold" data-k="${k}" aria-expanded="${!isF(k)}">${CHEV}${inner}</button>`;
 let S=structuredClone(seed), done={};
 // modus: 'laden', 'login', 'server' (therapeut ingelogd, gegevens in de database), 'client' (cliënt ingelogd: alleen het eigen schema)
-// of 'demo' (alleen deze browser)
+// of 'demo' (alleen deze browser); 'fout' als de server de gegevens nu niet kan geven
 let modus='laden', gebruiker=null, opslagStatus='', serverMelding='';
 // Nieuwe database: wel de voorbeeldoefeningen en -schema's, maar geen (verzonnen) cliënten
 const leegStart=()=>({...structuredClone(seed),clients:[],ratings:[]});
@@ -110,10 +110,11 @@ function snapshot(){const before=JSON.stringify(S);return ()=>{S=JSON.parse(befo
 
 function render(){
   document.body.dataset.modus=modus;
-  $('#uitloggen').hidden=!['server','client','dev'].includes(modus);
+  $('#uitloggen').hidden=!['server','client','dev','fout'].includes(modus);
   voetTekst();
   if(modus==='laden'){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">Laden…</p>`;return}
   if(modus==='login'){$('#app').innerHTML=loginHtml();$('#overlay').innerHTML='';return}
+  if(modus==='fout'){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">De gegevens kunnen nu niet geladen worden. Probeer het later opnieuw.</p>`;$('#overlay').innerHTML='';return}
   if(modus==='client'){$('#app').innerHTML=client();$('#overlay').innerHTML='';return}
   $('#v-ther').setAttribute('aria-pressed',view==='ther');
   $('#v-cli').setAttribute('aria-pressed',view==='cli');
@@ -147,6 +148,7 @@ async function inloggen(){
   modus=r.rol==='ontwikkelaar'?'dev':'server';
   const g=await Opslag.laad();
   if(!g){modus='login';render();return}
+  if(g.fout){modus='fout';render();return}
   gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();laadAccounts();
 }
 async function uitloggen(){
@@ -289,8 +291,7 @@ function clientCard(c){
       <div class="cl-status">${status}${c.custom&&base?`<span class="based">op basis van ${esc(base.name)}</span>`:''}${c.viaIndicatie&&base?'<span class="based">automatisch via indicatie</span>':''}</div>
     </div>
     ${open?`<div class="cl-body">
-      <div class="row ind-velden">${indKeuzes(c,'ind-'+c.id,'sub-'+c.id,'cl-ind','cl-sub',`data-id="${c.id}"`)}
-        <button class="icon-btn" data-act="ind-open" title="Indicaties en subcategorieën beheren" aria-label="Indicaties beheren" style="align-self:flex-end;margin-bottom:4px">✎</button></div>
+      <div class="row ind-velden">${indKeuzes(c,'ind-'+c.id,'sub-'+c.id,'cl-ind','cl-sub',`data-id="${c.id}"`)}</div>
       <label class="field" style="max-width:360px"><span>Basisschema</span>
         <select id="sel-${c.id}" data-act="assign" data-id="${c.id}">
           <option value="">Geen schema</option>${S.schemas.map(x=>`<option value="${x.id}" ${c.schema===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
@@ -614,6 +615,7 @@ render();
 Opslag.start().then(r=>{
   modus=r.modus;gebruiker=r.gebruiker||null;serverMelding=r.melding||'';
   if(modus==='client'){laadMijn();return}
+  if(modus==='fout'){render();return}
   if(modus!=='login')gebruikGegevens(r.gegevens,r.afgevinkt);
   render();
   if(modus==='server'||modus==='dev')laadAccounts();

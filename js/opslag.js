@@ -30,6 +30,8 @@ const Opslag=(()=>{
   async function laad(){
     const r=await api('gegevens');
     if(r.status===401){modus='login';return null}
+    // serverfout (bijv. database of sleutel): niets laden en ook niets opslaan, anders zou de app met lege gegevens verder gaan
+    if(r.status!==200){modus='fout';return {fout:r.fout||'serverfout'}}
     versie=r.versie;laatste={gegevens:r.gegevens,afgevinkt:r.afgevinkt||{}};
     return {gegevens:r.gegevens,afgevinkt:r.afgevinkt||{}};
   }

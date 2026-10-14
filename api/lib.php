@@ -119,6 +119,58 @@ function werk_database_bij() {
   }
 }
 
+/* ---------- Versleuteling van opgeslagen gegevens ---------- */
+// Praktijkgegevens en wat cliënten invullen staan versleuteld in de database (AES-256-GCM). De sleutel staat niet in
+// de database maar in config.php (data_key, uit het GitHub-secret DATA_KEY: base64 van 32 willekeurige bytes).
+// Zonder sleutel wordt leesbaar opgeslagen; leesbare oude waarden worden met sleutel gewoon gelezen en vanzelf versleuteld.
+// Sleutel kwijt = gegevens kwijt: bewaar hem ook in een wachtwoordmanager.
+const VERSLEUTELD = 'enc1:';
+
+function data_sleutel() {
+  static $k = null;
+  if ($k === null) {
+    $ruw = trim((string)(instellingen()['data_key'] ?? ''));
+    $k = $ruw === '' ? false : base64_decode($ruw, true);
+    if ($ruw !== '' && ($k === false || strlen($k) !== 32)) throw new RuntimeException('data_key moet base64 van 32 bytes zijn');
+  }
+  return $k;
+}
+
+function versleutel($tekst) {
+  $k = data_sleutel();
+  if (!$k) return $tekst;
+  $iv = random_bytes(12);
+  $tag = '';
+  $c = openssl_encrypt($tekst, 'aes-256-gcm', $k, OPENSSL_RAW_DATA, $iv, $tag);
+  if ($c === false) throw new RuntimeException('versleutelen mislukt');
+  return VERSLEUTELD . base64_encode($iv . $tag . $c);
+}
+
+function ontsleutel($waarde) {
+  if (strncmp((string)$waarde, VERSLEUTELD, strlen(VERSLEUTELD)) !== 0) return $waarde; // nog leesbaar (van vóór de versleuteling)
+  $k = data_sleutel();
+  if (!$k) throw new RuntimeException('gegevens zijn versleuteld maar er is geen data_key ingesteld');
+  $ruw = base64_decode(substr($waarde, strlen(VERSLEUTELD)), true);
+  $t = $ruw === false ? false : openssl_decrypt(substr($ruw, 28), 'aes-256-gcm', $k, OPENSSL_RAW_DATA, substr($ruw, 0, 12), substr($ruw, 12, 16));
+  if ($t === false) throw new RuntimeException('ontsleutelen mislukt (verkeerde data_key?)');
+  return $t;
+}
+
+// Gegevens die nog leesbaar in de database staan versleutelen (zodra er een sleutel is; één snelle controle per keer dat de app opent).
+// Alleen bijwerken als de rij intussen niet veranderd is.
+function versleutel_bestaande() {
+  if (!data_sleutel()) return;
+  $db = db();
+  if (!$db->query("SHOW TABLES LIKE 'praktijkdata'")->fetch()) return;
+  foreach ($db->query("SELECT id, gegevens, afgevinkt FROM praktijkdata WHERE gegevens NOT LIKE 'enc1:%' OR afgevinkt NOT LIKE 'enc1:%'")->fetchAll() as $r)
+    $db->prepare('UPDATE praktijkdata SET gegevens = ?, afgevinkt = ? WHERE id = ? AND gegevens = ? AND afgevinkt = ?')
+       ->execute([versleutel(ontsleutel($r['gegevens'])), versleutel(ontsleutel($r['afgevinkt'])), $r['id'], $r['gegevens'], $r['afgevinkt']]);
+  if (!$db->query("SHOW TABLES LIKE 'client_dagen'")->fetch()) return;
+  foreach ($db->query("SELECT client_id, datum, afgevinkt, beoordelingen FROM client_dagen WHERE afgevinkt NOT LIKE 'enc1:%' OR beoordelingen NOT LIKE 'enc1:%'")->fetchAll() as $r)
+    $db->prepare('UPDATE client_dagen SET afgevinkt = ?, beoordelingen = ? WHERE client_id = ? AND datum = ? AND afgevinkt = ? AND beoordelingen = ?')
+       ->execute([versleutel(ontsleutel($r['afgevinkt'])), versleutel(ontsleutel($r['beoordelingen'])), $r['client_id'], $r['datum'], $r['afgevinkt'], $r['beoordelingen']]);
+}
+
 function invoer() {
   if (isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > MAX_BODY) antwoord(['fout' => 'te-groot'], 413);
   $ruw = file_get_contents('php://input', false, null, 0, MAX_BODY + 1);
@@ -201,7 +253,11 @@ function rij_van($g) { return $g['rol'] === 'ontwikkelaar' ? RIJ_ONTWIKKELAAR : 
 function lees_rij($rij) {
   $q = db()->prepare('SELECT gegevens, afgevinkt, versie FROM praktijkdata WHERE id = ?');
   $q->execute([$rij]);
-  return $q->fetch() ?: null;
+  $r = $q->fetch();
+  if (!$r) return null;
+  $r['gegevens'] = ontsleutel($r['gegevens']);
+  $r['afgevinkt'] = ontsleutel($r['afgevinkt']);
+  return $r;
 }
 function praktijkgegevens() {
   $r = lees_rij(RIJ_PRAKTIJK);

@@ -8,5 +8,6 @@ return [
   'db_user' => 'rugschema',
   'db_pass' => 'geheim',
   'setup_code' => 'lange-willekeurige-code',
+  'data_key' => '',          // sleutel om de gegevens versleuteld op te slaan: openssl rand -base64 32 (leeg = niet versleutelen)
   'cookie_secure' => true,   // alleen false bij lokaal testen zonder https
 ];
