@@ -226,7 +226,8 @@ function therapist(){
   return `<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h1>Praktijkoverzicht</h1>
     <p class="lede">Sleep oefenkaarten naar een schema, of klik op een kaart om hem te koppelen. Sleep ze terug of naar de prullenbak om ze eruit te halen.</p></div>
     ${modus==='demo'?'<button class="btn danger small" data-act="reset-demo" style="flex:0 0 auto">Voorbeelddata herstellen</button>':''}
-    ${modus==='server'?'<button class="btn ghost small" data-act="dev-open" style="flex:0 0 auto">Ontwikkelaar-account</button>':''}</div>
+    ${modus==='server'?`<span style="flex:0 0 auto;display:flex;gap:6px;flex-wrap:wrap">${heeftTestClienten()?'':'<button class="btn ghost small" data-act="test-clienten">+ Testcliënten</button>'}
+      <button class="btn ghost small" data-act="dev-open">Ontwikkelaar-account</button></span>`:''}</div>
   <section class="section">
     <div class="section-head"><div>${foldHead('lib','<h2>Kaartenbak</h2>')}<p class="lede" style="font-size:.92rem">${telTekst(kaarten.length,S.cards.length,'oefening','oefeningen')}</p></div>
       <div class="filters" role="group" aria-label="Filter op categorie">${['Alle',...cats()].map(c=>{const n=c==='Alle'?S.cards.length:S.cards.filter(x=>x.cat===c).length;

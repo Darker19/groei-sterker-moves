@@ -143,3 +143,31 @@ document.addEventListener('click',async ev=>{
     try{await navigator.clipboard.writeText(`Website: ${location.origin+location.pathname.replace(/index\.html$/,'')}\nGebruikersnaam: ${n.login}\nWachtwoord: ${n.wachtwoord}`);toast('Gekopieerd')}catch(e){toast('Kopiëren lukt niet, schrijf het over')}}
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&devBeheer){devBeheer=null;render()}});
+
+/* ---------- Testcliënten (therapeut) ---------- */
+// Zet Testpiet, Testduif en Testpiloot met verzonnen voortgang in de praktijk, om de app (en cliënt-accounts) te testen.
+// Zelfde opzet als de testcliënten van het ontwikkelaar-account (dev_gegevens in api/lib.php).
+const TEST_NAMEN=['Testpiet','Testduif','Testpiloot'];
+const heeftTestClienten=()=>TEST_NAMEN.every(n=>S.clients.some(c=>c.name===n));
+function voegTestClientenToe(){
+  const sch=S.schemas, ind=S.indLijst, undo=snapshot();
+  const kies=(i,j)=>{if(!ind.length)return ['',''];const t=ind[i%ind.length];return [t.name,t.subs.length?t.subs[j%t.subs.length]:'']};
+  let rnd=7;const r=(a,b)=>{rnd=(rnd*48271)%2147483647;return a+rnd%(b-a+1)};   // vast patroon
+  [['Testpiet',6,0,0],['Testduif',16,0,1],['Testpiloot',22,1,0]].forEach(([naam,age,i,j],n)=>{
+    if(S.clients.some(c=>c.name===naam))return;
+    const [indicatie,subcategorie]=kies(i,j), base=sch.length?sch[n%sch.length]:null;
+    const c={id:uid(),name:naam,age,indicatie,subcategorie,schema:base?.id||''};
+    if(n===2&&base){   // Testpiloot: persoonlijk schema, één oefening lichter en één dag minder per week
+      c.custom={...structuredClone(base),id:'p-'+c.id,client:c.id,base:base.id,days:Math.max(1,(base.days||3)-1)};
+      delete c.custom.indicatie;delete c.custom.subcategorie;
+      if(c.custom.items[0])c.custom.items[0].reps=Math.max(1,c.custom.items[0].reps-2)}
+    S.clients.push(c);
+    const s=c.custom||base;if(!s)return;
+    for(let d=9;d>=1;d-=2){const datum=new Date(Date.now()-d*864e5).toISOString().slice(0,10);
+      s.items.forEach((it,k)=>{if(r(1,10)>8)return;
+        (done[c.id+':'+datum]??={})[it.card]=true;
+        S.ratings.push({c:c.id,e:it.card,d:datum,hard:Math.min(5,Math.max(1,2+k%3+r(-1,1))),fun:Math.min(5,Math.max(1,4-k%2+r(-1,1)))})})}
+  });
+  save();render();toast('Testpiet, Testduif en Testpiloot toegevoegd',undo);
+}
+document.addEventListener('click',ev=>{if(ev.target.closest('[data-act="test-clienten"]'))voegTestClientenToe()});
