@@ -32,7 +32,7 @@ if (!$al && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $e = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 ?><!doctype html>
 <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>RugSchema installeren</title>
+<meta name="robots" content="noindex"><title>Groei Sterker Moves installeren</title>
 <style>
 body{font:16px/1.5 system-ui,sans-serif;background:#ffdecc;color:#1f1f1f;margin:0;padding:24px 16px}
 main{max-width:440px;margin:0 auto;background:#fff;border-radius:18px;padding:24px;border:2px solid #f9b18a}
@@ -42,11 +42,11 @@ button{margin-top:18px;font:600 1rem system-ui;background:#f9b18a;border:0;borde
 .fout{background:#f8e1df;color:#b3362f;padding:10px 12px;border-radius:10px} .ok{background:#e3f3e8;color:#2e7d4f;padding:10px 12px;border-radius:10px}
 a{color:#8f4119}
 </style></head><body><main>
-<h1>RugSchema installeren</h1>
+<h1>Groei Sterker Moves installeren</h1>
 <?php if ($klaar): ?>
   <p class="ok">Klaar! Je account is aangemaakt.</p><p><a href="../">Naar de app en inloggen</a></p>
 <?php elseif ($al): ?>
-  <p class="ok">RugSchema is al geïnstalleerd. Deze pagina doet niets meer.</p><p><a href="../">Naar de app</a></p>
+  <p class="ok">Groei Sterker Moves is al geïnstalleerd. Deze pagina doet niets meer.</p><p><a href="../">Naar de app</a></p>
 <?php else: ?>
   <p>Maak het account voor de therapeut aan. Dit kan maar één keer.</p>
   <?php if ($melding): ?><p class="fout"><?= $e($melding) ?></p><?php endif; ?>

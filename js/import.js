@@ -27,9 +27,9 @@ const IMP_KOLOMMEN={
 };
 const IMP_MAX=500, IMP_GEEN='(geen)';
 const IMP_TEKST={
-  oef:{titel:'Oefeningen importeren',bestand:'RugSchema-oefeningen-voorbeeld.xlsx',
+  oef:{titel:'Oefeningen importeren',bestand:'GroeiSterkerMoves-oefeningen-voorbeeld.xlsx',
     uitleg:'Eén rij per oefening, met de kolommen <b>Oefening</b>, <b>Categorie</b>, Sets, Herhalingen, Vasthouden (s), Rust (s), Instructie en Schema. Oefening en Categorie zijn verplicht.'},
-  sch:{titel:"Schema's importeren",bestand:'RugSchema-schemas-voorbeeld.xlsx',
+  sch:{titel:"Schema's importeren",bestand:'GroeiSterkerMoves-schemas-voorbeeld.xlsx',
     uitleg:'Eén rij per oefening in een schema, met de kolommen <b>Schema</b>, Per week, Weken, <b>Oefening</b>, Sets, Herhalingen, Vasthouden (s) en Rust (s). De oefeningen moeten al in de kaartenbak staan.'}
 };
 

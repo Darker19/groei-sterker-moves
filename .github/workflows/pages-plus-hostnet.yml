@@ -1,7 +1,7 @@
 name: Pages preview → Hostnet deploy (app.groei-sterker.nl)
 
 # Zelfde werkwijze als de website:
-# 1. Elke push naar master komt eerst op GitHub Pages (https://darker19.github.io/rugschema/) om na te kijken.
+# 1. Elke push naar master komt eerst op GitHub Pages (https://darker19.github.io/groei-sterker-moves/) om na te kijken.
 # 2. Daarna wacht de Hostnet-stap op goedkeuring (omgeving "production") en pas dan gaat het via FTP naar app.groei-sterker.nl.
 
 on:
@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Discord — RugSchema deploy gestart
+      - name: Discord — Groei Sterker Moves deploy gestart
         continue-on-error: true
         run: |
           CHANGES=$(git log -5 --pretty=format:"• %s" | sed ':a;N;$!ba;s/\n/\\n/g')
@@ -38,7 +38,7 @@ jobs:
           curl -H "Content-Type: application/json" -X POST \
             -d "{
               \"embeds\": [{
-                \"title\": \"📱 RugSchema — Deploy gestart\",
+                \"title\": \"📱 Groei Sterker Moves — Deploy gestart\",
                 \"description\": \"**Wijzigingen (laatste 5 commits):**\\n$CHANGES\\n\\nRun: $RUN_URL\",
                 \"color\": 3447003
               }]
@@ -83,7 +83,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Discord — RugSchema op GitHub Pages (nakijken)
+      - name: Discord — Groei Sterker Moves op GitHub Pages (nakijken)
         if: success()
         continue-on-error: true
         run: |
@@ -91,20 +91,20 @@ jobs:
           curl -H "Content-Type: application/json" -X POST \
             -d "{
               \"embeds\": [{
-                \"title\": \"📱 RugSchema — Klaar om na te kijken\",
+                \"title\": \"📱 Groei Sterker Moves — Klaar om na te kijken\",
                 \"description\": \"Preview: ${{ steps.deployment.outputs.page_url }}\\n\\nAlles goed? Keur de Hostnet-stap goed:\\n$RUN_URL\",
                 \"color\": 3066993
               }]
             }" \
             "${{ secrets.DISCORD_WEBHOOK }}"
 
-      - name: Discord — RugSchema GitHub Pages gefaald
+      - name: Discord — Groei Sterker Moves GitHub Pages gefaald
         if: failure()
         continue-on-error: true
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -H "Content-Type: application/json" -X POST \
-            -d "{\"embeds\": [{\"title\": \"📱 RugSchema — GitHub Pages gefaald\", \"description\": \"Run: $RUN_URL\", \"color\": 15158332}]}" \
+            -d "{\"embeds\": [{\"title\": \"📱 Groei Sterker Moves — GitHub Pages gefaald\", \"description\": \"Run: $RUN_URL\", \"color\": 15158332}]}" \
             "${{ secrets.DISCORD_WEBHOOK }}"
 
   deploy_hostnet:
@@ -152,19 +152,19 @@ jobs:
           local-dir: site/
           server-dir: ${{ env.SERVER_DIR }}
 
-      - name: Discord — RugSchema live op app.groei-sterker.nl
+      - name: Discord — Groei Sterker Moves live op app.groei-sterker.nl
         if: success()
         continue-on-error: true
         run: |
           curl -H "Content-Type: application/json" -X POST \
-            -d "{\"embeds\": [{\"title\": \"📱 RugSchema — Live\", \"description\": \"https://app.groei-sterker.nl/ is bijgewerkt ✅\", \"color\": 3066993}]}" \
+            -d "{\"embeds\": [{\"title\": \"📱 Groei Sterker Moves — Live\", \"description\": \"https://app.groei-sterker.nl/ is bijgewerkt ✅\", \"color\": 3066993}]}" \
             "${{ secrets.DISCORD_WEBHOOK }}"
 
-      - name: Discord — RugSchema Hostnet gefaald
+      - name: Discord — Groei Sterker Moves Hostnet gefaald
         if: failure()
         continue-on-error: true
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -H "Content-Type: application/json" -X POST \
-            -d "{\"embeds\": [{\"title\": \"📱 RugSchema — Hostnet deploy gefaald ❌\", \"description\": \"Run: $RUN_URL\", \"color\": 15158332}]}" \
+            -d "{\"embeds\": [{\"title\": \"📱 Groei Sterker Moves — Hostnet deploy gefaald ❌\", \"description\": \"Run: $RUN_URL\", \"color\": 15158332}]}" \
             "${{ secrets.DISCORD_WEBHOOK }}"

@@ -127,14 +127,14 @@ function voetTekst(){
   const st={bezig:'Opslaan…',opgeslagen:'Opgeslagen ✓',fout:'Niet opgeslagen, nieuwe poging volgt…'}[opslagStatus]||'';
   // alleen voor de therapeut, de ontwikkelaar en de demo; cliënten (en het inlogscherm) zien geen versie- of inlogregel
   if(!['server','dev','demo'].includes(modus)){$('#versie').textContent='';return}
-  $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&modus!=='demo'?`ingelogd als ${gebruiker.naam}`:'',modus!=='demo'?st:''].filter(Boolean).join(' · ');
+  $('#versie').textContent=[`Groei Sterker Moves · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&modus!=='demo'?`ingelogd als ${gebruiker.naam}`:'',modus!=='demo'?st:''].filter(Boolean).join(' · ');
 }
 
 /* ---------- Inloggen ---------- */
 function loginHtml(fout=''){
   return `<form class="login" id="login-form" autocomplete="on">
     <img src="img/olifant.png" alt="" width="444" height="512"><h1>Inloggen</h1>
-    <p class="lede">Log in om RugSchema te gebruiken.</p>
+    <p class="lede">Log in om Groei Sterker Moves te gebruiken.</p>
     ${installHtml()}
     <p class="imp-fout" id="login-fout" role="alert" ${fout?'':'hidden'}>${esc(fout)}</p>
     <label class="field"><span>E-mailadres of gebruikersnaam</span><input id="li-email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>

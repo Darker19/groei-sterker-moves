@@ -1,4 +1,4 @@
-// "Zet RugSchema op je beginscherm": een kaartje op het inlogscherm en in de cliëntweergave.
+// "Zet Groei Sterker Moves op je beginscherm": een kaartje op het inlogscherm en in de cliëntweergave.
 // Android/Chrome: knop die de installatie start. iPhone/iPad: uitleg via Deel → Zet op beginscherm.
 // Niet getoond als de app al geïnstalleerd is (geopend vanaf het beginscherm) of na "Niet nu".
 let installPrompt=null;
@@ -14,7 +14,7 @@ addEventListener('appinstalled',()=>{installPrompt=null;render()});
 function installHtml(){
   if(alsApp()||installWeg()||(!installPrompt&&!isIOS()))return '';
   return `<div class="installeer" role="note"><img src="img/icon-192.png" alt="" width="48" height="48">
-    <div><strong>Zet RugSchema op je beginscherm</strong>
+    <div><strong>Zet Groei Sterker Moves op je beginscherm</strong>
       ${installPrompt?'<p>Dan open je je oefeningen met één tik, net als een app.</p>'
         :'<p>Tik op <b>Deel</b> <span aria-hidden="true">(□↑)</span> en kies <b>Zet op beginscherm</b>.</p>'}
       <div class="row">${installPrompt?'<button type="button" class="btn small" data-act="installeer">Installeren</button>':''}
