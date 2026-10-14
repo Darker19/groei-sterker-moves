@@ -135,6 +135,7 @@ function loginHtml(fout=''){
   return `<form class="login" id="login-form" autocomplete="on">
     <img src="img/olifant.png" alt="" width="444" height="512"><h1>Inloggen</h1>
     <p class="lede">Log in om RugSchema te gebruiken.</p>
+    ${installHtml()}
     <p class="imp-fout" id="login-fout" role="alert" ${fout?'':'hidden'}>${esc(fout)}</p>
     <label class="field"><span>E-mailadres of gebruikersnaam</span><input id="li-email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
     <label class="field"><span>Wachtwoord</span><input id="li-ww" type="password" autocomplete="current-password" required></label>
@@ -386,7 +387,7 @@ function client(){
   if(!c)return `<p class="empty" style="margin-top:20px">Er zijn nog geen cliënten.</p>`;
   activeClient=c.id;
   const s=effective(c), first=esc(c.name.split(' ')[0]);
-  const picker=modus==='client'?'<div style="margin-top:20px"></div>':`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
+  const picker=modus==='client'?`<div style="margin-top:20px"></div>${installHtml()}`:`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
     <select id="cli-pick" data-act="pick">${S.clients.map(x=>`<option value="${x.id}" ${x.id===c.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;
   if(!s)return picker+`<div class="panel" style="margin-top:16px;max-width:720px"><h2>Hoi ${first}!</h2><p class="empty">Je fysiotherapeut zet binnenkort je oefeningen voor je klaar.</p></div>`+(modus==='client'?`<div style="margin-top:16px;max-width:720px">${mijnAccountHtml()}</div>`:'');
   const key=c.id+':'+today(), d=done[key]||{};

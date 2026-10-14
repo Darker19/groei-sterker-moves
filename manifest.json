@@ -1,0 +1,17 @@
+{
+  "name": "RugSchema · Groei Sterker",
+  "short_name": "RugSchema",
+  "description": "Oefenschema's van Groei Sterker",
+  "lang": "nl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffdecc",
+  "theme_color": "#ffdecc",
+  "icons": [
+    {"src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
