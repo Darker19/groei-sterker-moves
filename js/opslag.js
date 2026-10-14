@@ -1,7 +1,7 @@
 // Alle opslag van de app zit in dit ene bestand. De rest van de app gebruikt alleen deze functies:
 //   start()            -> {modus, gebruiker, gegevens, afgevinkt, melding}
-//                         modus 'server' (therapeut ingelogd), 'client' (cliënt ingelogd), 'dev' (ontwikkelaar: alleen lezen,
-//                         met testcliënten; wijzigingen worden niet opgeslagen), 'login' (inloggen nodig)
+//                         modus 'server' (therapeut ingelogd), 'client' (cliënt ingelogd), 'dev' (ontwikkelaar: echte oefeningen
+//                         en schema's met eigen testcliënten; de server bewaart alleen de testcliënten), 'login' (inloggen nodig)
 //                         of 'demo' (geen server: alleen deze browser)
 //   login(email, ww)   -> {ok, fout, rol}       uitloggen()
 //   laad()             -> {gegevens, afgevinkt} (therapeut, na inloggen)
@@ -48,7 +48,7 @@ const Opslag=(()=>{
     if(wachtend&&!opnieuw&&online()){clearTimeout(timer);timer=setTimeout(verstuur,10000)} // zelf opnieuw proberen
     if(opnieuw&&online())verstuur();
   }
-  const online=()=>modus==='server'||modus==='client';
+  const online=()=>modus==='server'||modus==='client'||modus==='dev';
   function plan(){if(!online())return;wachtend=true;clearTimeout(timer);timer=setTimeout(verstuur,700)}
   // niet weggaan terwijl er nog iets opgeslagen moet worden
   addEventListener('beforeunload',e=>{if(online()&&(wachtend||bezig)){e.preventDefault();e.returnValue=''}});
@@ -88,10 +88,10 @@ const Opslag=(()=>{
     devWeg:()=>post('dev-weg',{}),
     opStatus:fn=>{statusFn=fn},
     laadGegevens:()=>{const s=lees(KEY);return s&&s.cards?s:null},
-    // ontwikkelaar: niets bewaren (ook niet in de browser), zodat praktijkgegevens nergens achterblijven
-    bewaarGegevens:s=>{if(modus==='server'){laatste.gegevens=s;plan()}else if(modus==='demo')schrijf(KEY,s)},
+    // server en ontwikkelaar: naar de server (die bij de ontwikkelaar alleen de testcliënten bewaart); alleen de demo bewaart in de browser
+    bewaarGegevens:s=>{if(modus==='server'||modus==='dev'){laatste.gegevens=s;plan()}else if(modus==='demo')schrijf(KEY,s)},
     laadAfgevinkt:()=>lees(KEY+'-done')||{},
-    bewaarAfgevinkt:d=>{if(modus==='server'){laatste.afgevinkt=d;plan()}else if(modus==='demo')schrijf(KEY+'-done',d)},
+    bewaarAfgevinkt:d=>{if(modus==='server'||modus==='dev'){laatste.afgevinkt=d;plan()}else if(modus==='demo')schrijf(KEY+'-done',d)},
     laadIngeklapt:()=>lees(FOLD),
     bewaarIngeklapt:f=>schrijf(FOLD,f),
     wisAlles:()=>{try{[KEY,KEY+'-done'].forEach(k=>localStorage.removeItem(k))}catch(e){}}

@@ -179,7 +179,7 @@ function eis_therapeut() {
   return $g;
 }
 
-// Ontwikkelaar: ziet de echte oefeningen en schema's, maar alleen testcliënten (zie dev_gegevens)
+// Ontwikkelaar: ziet de echte oefeningen en schema's, maar alleen de eigen testcliënten (rij RIJ_ONTWIKKELAAR)
 function eis_therapeut_of_ontwikkelaar() {
   $g = eis_gebruiker();
   if ($g['rol'] !== 'therapeut' && $g['rol'] !== 'ontwikkelaar') antwoord(['fout' => 'geen-toegang'], 403);
@@ -192,9 +192,33 @@ function eis_client() {
   return $g;
 }
 
+// In praktijkdata staan twee rijen: 1 = de praktijk (therapeut), 2 = de testcliënten van de ontwikkelaar
+// (alleen clients en ratings; die ziet de therapeut nooit, en de ontwikkelaar ziet de echte cliënten nooit)
+const RIJ_PRAKTIJK = 1;
+const RIJ_ONTWIKKELAAR = 2;
+function rij_van($g) { return $g['rol'] === 'ontwikkelaar' ? RIJ_ONTWIKKELAAR : RIJ_PRAKTIJK; }
+
+function lees_rij($rij) {
+  $q = db()->prepare('SELECT gegevens, afgevinkt, versie FROM praktijkdata WHERE id = ?');
+  $q->execute([$rij]);
+  return $q->fetch() ?: null;
+}
 function praktijkgegevens() {
-  $r = db()->query('SELECT gegevens FROM praktijkdata WHERE id = 1')->fetch();
+  $r = lees_rij(RIJ_PRAKTIJK);
   return $r ? json_decode($r['gegevens'], true) : null;
+}
+function clients_van($rij) {
+  $r = lees_rij($rij);
+  return $r ? (json_decode($r['gegevens'], true)['clients'] ?? []) : [];
+}
+function ids_van($clients) {
+  return array_values(array_filter(array_map(function ($c) { return (string)($c['id'] ?? ''); }, $clients)));
+}
+// cliënt opzoeken in één rij, of (zonder $rij) in beide
+function zoek_client($id, $rij = null) {
+  foreach ($rij ? [$rij] : [RIJ_PRAKTIJK, RIJ_ONTWIKKELAAR] as $r)
+    foreach (clients_van($r) as $c) if (($c['id'] ?? null) === $id) return $c;
+  return null;
 }
 
 // Wachtwoord dat een kind kan overtypen, bijv. "tijger-blauw-4821" (pogingen zijn beperkt, zie MAX_POGINGEN)
@@ -205,51 +229,3 @@ function maak_client_wachtwoord() {
   return $w[random_int(0, count($w) - 1)] . '-' . $w[random_int(0, count($w) - 1)] . '-' . random_int(1000, 9999);
 }
 
-// Praktijkgegevens voor de ontwikkelaar: echte oefeningen, schema's, categorieën en indicaties,
-// maar de cliënten, beoordelingen en afvinklijsten vervangen door drie verzonnen testcliënten.
-function dev_gegevens($p) {
-  $schemas = array_values($p['schemas'] ?? []);
-  $ind = array_values($p['indLijst'] ?? []);
-  $kies_ind = function ($i, $j) use ($ind) {
-    if (!$ind) return ['', ''];
-    $t = $ind[$i % count($ind)];
-    $subs = array_values($t['subs'] ?? []);
-    return [$t['name'] ?? '', $subs ? $subs[$j % count($subs)] : ''];
-  };
-  $test = [['dev1', 'Testpiet', 6, 0, 0], ['dev2', 'Testduif', 16, 0, 1], ['dev3', 'Testpiloot', 22, 1, 0]];
-  $clients = [];
-  foreach ($test as $n => [$id, $naam, $leeftijd, $i, $j]) {
-    [$indicatie, $sub] = $kies_ind($i, $j);
-    $c = ['id' => $id, 'name' => $naam, 'age' => $leeftijd, 'indicatie' => $indicatie, 'subcategorie' => $sub, 'schema' => $schemas ? $schemas[$n % count($schemas)]['id'] : ''];
-    // Testpiloot heeft een persoonlijk schema: één oefening iets lichter en één minder dag per week
-    if ($n === 2 && $schemas) {
-      $b = $schemas[$n % count($schemas)];
-      $custom = $b;
-      unset($custom['indicatie'], $custom['subcategorie']);
-      $custom['id'] = 'p-' . $id; $custom['client'] = $id; $custom['base'] = $b['id'];
-      $custom['days'] = max(1, (int)($b['days'] ?? 3) - 1);
-      if (!empty($custom['items'][0])) $custom['items'][0]['reps'] = max(1, (int)($custom['items'][0]['reps'] ?? 10) - 2);
-      $c['custom'] = $custom;
-    }
-    $clients[] = $c;
-  }
-  // de laatste 10 dagen: om de dag geoefend, met wisselende smileys (vast patroon, elke keer hetzelfde)
-  mt_srand(7);
-  $ratings = []; $afgevinkt = [];
-  foreach ($clients as $c) {
-    $s = $c['custom'] ?? null;
-    if (!$s) foreach ($schemas as $x) if ($x['id'] === $c['schema']) $s = $x;
-    if (!$s) continue;
-    for ($d = 9; $d >= 1; $d -= 2) {
-      $datum = date('Y-m-d', strtotime("-$d days"));
-      foreach ($s['items'] ?? [] as $k => $it) {
-        if (mt_rand(1, 10) > 8) continue; // af en toe een oefening overgeslagen
-        $afgevinkt[$c['id'] . ':' . $datum][$it['card']] = true;
-        $ratings[] = ['c' => $c['id'], 'e' => $it['card'], 'd' => $datum, 'hard' => min(5, max(1, 2 + $k % 3 + mt_rand(-1, 1))), 'fun' => min(5, max(1, 4 - $k % 2 + mt_rand(-1, 1)))];
-      }
-    }
-  }
-  $p['clients'] = $clients;
-  $p['ratings'] = $ratings;
-  return [$p, $afgevinkt];
-}

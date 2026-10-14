@@ -17,8 +17,8 @@ function loginVoorstel(c){
 const accDatum=d=>d?new Date(d.replace(' ','T')).toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'}):'';
 
 function accountHtml(c){
-  if(modus!=='server')return `<div class="acc"><div class="label">Inloggen voor ${esc(c.name.split(' ')[0])}</div>
-    <p class="demo" style="margin:0">${modus==='dev'?'Cliënt-accounts zijn niet beschikbaar in het ontwikkelaar-account.':'Cliënt-accounts maak je als je als therapeut bent ingelogd op de server.'}</p></div>`;
+  if(modus!=='server'&&modus!=='dev')return `<div class="acc"><div class="label">Inloggen voor ${esc(c.name.split(' ')[0])}</div>
+    <p class="demo" style="margin:0">Cliënt-accounts maak je als je als therapeut bent ingelogd op de server.</p></div>`;
   const a=accounts[c.id], nieuw=accNieuw[c.id], fout=accFout[c.id], first=esc(c.name.split(' ')[0]);
   return `<div class="acc"><div class="label">Inloggen voor ${first}</div>
     ${a?`<p class="acc-info">Gebruikersnaam <b>${esc(a.login)}</b> · ${a.laatst_ingelogd?`laatst ingelogd ${accDatum(a.laatst_ingelogd)}`:'nog niet ingelogd'}</p>
@@ -144,13 +144,17 @@ document.addEventListener('click',async ev=>{
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&devBeheer){devBeheer=null;render()}});
 
-/* ---------- Testcliënten (therapeut) ---------- */
-// Zet Testpiet, Testduif en Testpiloot met verzonnen voortgang in de praktijk, om de app (en cliënt-accounts) te testen.
-// Zelfde opzet als de testcliënten van het ontwikkelaar-account (dev_gegevens in api/lib.php).
+/* ---------- Testcliënten (alleen ontwikkelaar) ---------- */
+// Testpiet, Testduif en Testpiloot met verzonnen voortgang. Ze staan in de eigen opslag van de ontwikkelaar
+// (praktijkdata rij 2): de therapeut en andere gebruikers zien ze nooit.
 const TEST_NAMEN=['Testpiet','Testduif','Testpiloot'];
 const heeftTestClienten=()=>TEST_NAMEN.every(n=>S.clients.some(c=>c.name===n));
 function voegTestClientenToe(){
-  const sch=S.schemas, ind=S.indLijst, undo=snapshot();
+  const undo=snapshot();maakTestClienten();
+  save();render();toast('Testpiet, Testduif en Testpiloot toegevoegd',undo);
+}
+function maakTestClienten(){
+  const sch=S.schemas, ind=S.indLijst;
   const kies=(i,j)=>{if(!ind.length)return ['',''];const t=ind[i%ind.length];return [t.name,t.subs.length?t.subs[j%t.subs.length]:'']};
   let rnd=7;const r=(a,b)=>{rnd=(rnd*48271)%2147483647;return a+rnd%(b-a+1)};   // vast patroon
   [['Testpiet',6,0,0],['Testduif',16,0,1],['Testpiloot',22,1,0]].forEach(([naam,age,i,j],n)=>{
@@ -168,6 +172,5 @@ function voegTestClientenToe(){
         (done[c.id+':'+datum]??={})[it.card]=true;
         S.ratings.push({c:c.id,e:it.card,d:datum,hard:Math.min(5,Math.max(1,2+k%3+r(-1,1))),fun:Math.min(5,Math.max(1,4-k%2+r(-1,1)))})})}
   });
-  save();render();toast('Testpiet, Testduif en Testpiloot toegevoegd',undo);
 }
-document.addEventListener('click',ev=>{if(ev.target.closest('[data-act="test-clienten"]'))voegTestClientenToe()});
+document.addEventListener('click',ev=>{if(ev.target.closest('[data-act="test-clienten"]')&&modus==='dev')voegTestClientenToe()});

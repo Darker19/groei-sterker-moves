@@ -6,7 +6,7 @@
 //   GET  gegevens   -> {gegevens, afgevinkt, versie}
 //   POST bewaar     {gegevens, afgevinkt, versie} -> {versie} of 409 als iemand anders intussen heeft opgeslagen
 //   POST wachtwoord {oud, nieuw}
-// Cliënt-accounts (alleen therapeut):
+// Cliënt-accounts (therapeut voor de praktijk, ontwikkelaar voor de eigen testcliënten):
 //   GET  accounts                         -> {accounts: [{client_id, login, aangemaakt, laatst_ingelogd}]}
 //   POST account-maak {client_id, login}  -> {login, wachtwoord}   (het wachtwoord is daarna niet meer op te vragen)
 //   POST account-reset {client_id}        -> {login, wachtwoord}
@@ -72,48 +72,66 @@ if ($actie === 'uitloggen') {
 
 if ($actie === 'gegevens') {
   $g = eis_therapeut_of_ontwikkelaar();
-  $r = db()->query('SELECT gegevens, afgevinkt, versie FROM praktijkdata WHERE id = 1')->fetch();
-  if (!$r) antwoord(['gegevens' => null, 'afgevinkt' => new stdClass(), 'versie' => 0]);
-  $gegevens = json_decode($r['gegevens'], true);
+  $p = lees_rij(RIJ_PRAKTIJK);
   if ($g['rol'] === 'ontwikkelaar') {
-    [$gegevens, $afgevinkt] = dev_gegevens($gegevens);
-    antwoord(['gegevens' => $gegevens, 'afgevinkt' => $afgevinkt ?: new stdClass(), 'versie' => 0]);
+    // echte oefeningen en schema's, met de eigen testcliënten in plaats van de echte
+    $d = lees_rij(RIJ_ONTWIKKELAAR);
+    $dev = $d ? json_decode($d['gegevens'], true) : [];
+    $gegevens = $p ? json_decode($p['gegevens'], true) : [];
+    $gegevens['clients'] = $dev['clients'] ?? [];
+    $gegevens['ratings'] = $dev['ratings'] ?? [];
+    $afgevinkt = $d ? (json_decode($d['afgevinkt'], true) ?: []) : [];
+    $versie = $d ? (int)$d['versie'] : 0;
+  } else {
+    if (!$p) antwoord(['gegevens' => null, 'afgevinkt' => new stdClass(), 'versie' => 0]);
+    $gegevens = json_decode($p['gegevens'], true);
+    $afgevinkt = json_decode($p['afgevinkt'], true) ?: [];
+    $versie = (int)$p['versie'];
   }
-  $afgevinkt = json_decode($r['afgevinkt'], true) ?: [];
-  // wat cliënten zelf hebben ingevuld erbij zetten (dat gaat voor wat in de praktijkgegevens staat)
-  foreach (db()->query('SELECT client_id, datum, afgevinkt, beoordelingen FROM client_dagen')->fetchAll() as $d) {
-    $afgevinkt[$d['client_id'] . ':' . $d['datum']] = json_decode($d['afgevinkt']) ?: new stdClass();
-    $gegevens['ratings'] = array_values(array_filter($gegevens['ratings'] ?? [], function ($x) use ($d) {
-      return !(($x['c'] ?? '') === $d['client_id'] && ($x['d'] ?? '') === $d['datum']);
-    }));
-    foreach (json_decode($d['beoordelingen'], true) ?: [] as $b) $gegevens['ratings'][] = ['c' => $d['client_id'], 'd' => $d['datum']] + $b;
+  // wat de eigen cliënten zelf hebben ingevuld erbij zetten (dat gaat voor wat in de gegevens staat)
+  $ids = ids_van($gegevens['clients'] ?? []);
+  if ($ids) {
+    $q = db()->prepare('SELECT client_id, datum, afgevinkt, beoordelingen FROM client_dagen WHERE client_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+    $q->execute($ids);
+    foreach ($q->fetchAll() as $d) {
+      $afgevinkt[$d['client_id'] . ':' . $d['datum']] = json_decode($d['afgevinkt']) ?: new stdClass();
+      $gegevens['ratings'] = array_values(array_filter($gegevens['ratings'] ?? [], function ($x) use ($d) {
+        return !(($x['c'] ?? '') === $d['client_id'] && ($x['d'] ?? '') === $d['datum']);
+      }));
+      foreach (json_decode($d['beoordelingen'], true) ?: [] as $b) $gegevens['ratings'][] = ['c' => $d['client_id'], 'd' => $d['datum']] + $b;
+    }
   }
-  antwoord(['gegevens' => $gegevens, 'afgevinkt' => $afgevinkt ?: new stdClass(), 'versie' => (int)$r['versie']]);
+  antwoord(['gegevens' => $gegevens, 'afgevinkt' => $afgevinkt ?: new stdClass(), 'versie' => $versie]);
 }
 
 if ($actie === 'bewaar') {
   eis_app_verzoek();
-  $g = eis_therapeut();
+  $g = eis_therapeut_of_ontwikkelaar();
+  $rij = rij_van($g);
   $in = invoer();
   if (!isset($in['gegevens']['cards']) || !is_array($in['gegevens']['cards'])) antwoord(['fout' => 'ongeldige-gegevens'], 400);
-  $gegevens = json_encode($in['gegevens'], JSON_UNESCAPED_UNICODE);
+  $clients = is_array($in['gegevens']['clients'] ?? null) ? $in['gegevens']['clients'] : [];
+  // ontwikkelaar: alleen de testcliënten en hun beoordelingen bewaren; oefeningen en schema's blijven van de therapeut
+  $data = $rij === RIJ_ONTWIKKELAAR ? ['clients' => $clients, 'ratings' => $in['gegevens']['ratings'] ?? []] : $in['gegevens'];
+  $gegevens = json_encode($data, JSON_UNESCAPED_UNICODE);
   $afgevinkt = json_encode(isset($in['afgevinkt']) && is_array($in['afgevinkt']) && $in['afgevinkt'] ? $in['afgevinkt'] : new stdClass(), JSON_UNESCAPED_UNICODE);
   $versie = (int)($in['versie'] ?? -1);
   $db = db();
   if ($versie === 0) {
     // eerste keer opslaan: alleen als er nog niets staat
-    $q = $db->prepare('INSERT IGNORE INTO praktijkdata (id, gegevens, afgevinkt, versie, gewijzigd, gewijzigd_door) VALUES (1, ?, ?, 1, ?, ?)');
-    $q->execute([$gegevens, $afgevinkt, nu(), $g['id']]);
+    $q = $db->prepare('INSERT IGNORE INTO praktijkdata (id, gegevens, afgevinkt, versie, gewijzigd, gewijzigd_door) VALUES (?, ?, ?, 1, ?, ?)');
+    $q->execute([$rij, $gegevens, $afgevinkt, nu(), $g['id']]);
   } else {
-    $q = $db->prepare('UPDATE praktijkdata SET gegevens = ?, afgevinkt = ?, versie = versie + 1, gewijzigd = ?, gewijzigd_door = ? WHERE id = 1 AND versie = ?');
-    $q->execute([$gegevens, $afgevinkt, nu(), $g['id'], $versie]);
+    $q = $db->prepare('UPDATE praktijkdata SET gegevens = ?, afgevinkt = ?, versie = versie + 1, gewijzigd = ?, gewijzigd_door = ? WHERE id = ? AND versie = ?');
+    $q->execute([$gegevens, $afgevinkt, nu(), $g['id'], $rij, $versie]);
   }
   if ($q->rowCount() !== 1) {
-    $huidig = $db->query('SELECT versie FROM praktijkdata WHERE id = 1')->fetchColumn();
-    antwoord(['fout' => 'conflict', 'versie' => (int)$huidig], 409);
+    $q = $db->prepare('SELECT versie FROM praktijkdata WHERE id = ?');
+    $q->execute([$rij]);
+    antwoord(['fout' => 'conflict', 'versie' => (int)$q->fetchColumn()], 409);
   }
-  // accounts en gegevens van cliënten die niet meer bestaan opruimen
-  $ids = array_values(array_filter(array_map(function ($c) { return (string)($c['id'] ?? ''); }, $in['gegevens']['clients'] ?? [])));
+  // accounts en gegevens van cliënten die nergens meer bestaan opruimen (in geen van beide rijen)
+  $ids = array_merge(ids_van($clients), ids_van(clients_van($rij === RIJ_PRAKTIJK ? RIJ_ONTWIKKELAAR : RIJ_PRAKTIJK)));
   $niet = $ids ? ' AND client_id NOT IN (' . implode(',', array_fill(0, count($ids), '?')) . ')' : '';
   $q = $db->prepare("SELECT id FROM gebruikers WHERE rol = 'client'" . $niet);
   $q->execute($ids);
@@ -125,27 +143,28 @@ if ($actie === 'bewaar') {
   antwoord(['versie' => $versie + 1]);
 }
 
-/* ---------- Cliënt-accounts (therapeut) ---------- */
+/* ---------- Cliënt-accounts (therapeut voor de echte cliënten, ontwikkelaar voor de testcliënten) ---------- */
 
-function zoek_client($id) {
-  foreach (praktijkgegevens()['clients'] ?? [] as $c) if (($c['id'] ?? null) === $id) return $c;
-  return null;
+// de therapeut beheert alleen accounts van de praktijk, de ontwikkelaar alleen die van de eigen testcliënten
+function eis_eigen_client($g, $id) {
+  if ($id === '' || !in_array($id, ids_van(clients_van(rij_van($g))), true)) antwoord(['fout' => 'onbekende-client'], 404);
 }
 
 if ($actie === 'accounts') {
-  eis_therapeut();
+  $g = eis_therapeut_of_ontwikkelaar();
+  $eigen = ids_van(clients_van(rij_van($g)));
   $r = db()->query("SELECT client_id, email AS login, aangemaakt, laatst_ingelogd FROM gebruikers WHERE rol = 'client'")->fetchAll();
-  antwoord(['accounts' => $r]);
+  antwoord(['accounts' => array_values(array_filter($r, function ($a) use ($eigen) { return in_array($a['client_id'], $eigen, true); }))]);
 }
 
 if ($actie === 'account-maak') {
   eis_app_verzoek();
-  eis_therapeut();
+  $g = eis_therapeut_of_ontwikkelaar();
   $in = invoer();
   $id = (string)($in['client_id'] ?? '');
   $login = strtolower(trim((string)($in['login'] ?? '')));
   if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $login)) antwoord(['fout' => 'ongeldige-login'], 400);
-  $c = zoek_client($id);
+  $c = zoek_client($id, rij_van($g));
   if (!$c) antwoord(['fout' => 'onbekende-client'], 404);
   $db = db();
   $q = $db->prepare('SELECT COUNT(*) FROM gebruikers WHERE email = ? OR client_id = ?');
@@ -160,28 +179,32 @@ if ($actie === 'account-maak') {
 
 if ($actie === 'account-reset') {
   eis_app_verzoek();
-  eis_therapeut();
+  $g = eis_therapeut_of_ontwikkelaar();
   $in = invoer();
+  $id = (string)($in['client_id'] ?? '');
+  eis_eigen_client($g, $id);
   $q = db()->prepare("SELECT id, email FROM gebruikers WHERE rol = 'client' AND client_id = ?");
-  $q->execute([(string)($in['client_id'] ?? '')]);
-  $g = $q->fetch();
-  if (!$g) antwoord(['fout' => 'geen-account'], 404);
+  $q->execute([$id]);
+  $a = $q->fetch();
+  if (!$a) antwoord(['fout' => 'geen-account'], 404);
   $ww = maak_client_wachtwoord();
-  db()->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
-  db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$g['id']]); // overal uitloggen
-  antwoord(['login' => $g['email'], 'wachtwoord' => $ww]);
+  db()->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $a['id']]);
+  db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$a['id']]); // overal uitloggen
+  antwoord(['login' => $a['email'], 'wachtwoord' => $ww]);
 }
 
 if ($actie === 'account-weg') {
   eis_app_verzoek();
-  eis_therapeut();
+  $g = eis_therapeut_of_ontwikkelaar();
   $in = invoer();
+  $id = (string)($in['client_id'] ?? '');
+  eis_eigen_client($g, $id);
   $q = db()->prepare("SELECT id FROM gebruikers WHERE rol = 'client' AND client_id = ?");
-  $q->execute([(string)($in['client_id'] ?? '')]);
-  $id = $q->fetchColumn();
-  if ($id) {
-    db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$id]);
-    db()->prepare('DELETE FROM gebruikers WHERE id = ?')->execute([$id]);
+  $q->execute([$id]);
+  $a = $q->fetchColumn();
+  if ($a) {
+    db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$a]);
+    db()->prepare('DELETE FROM gebruikers WHERE id = ?')->execute([$a]);
   }
   antwoord(['ok' => true]);
 }

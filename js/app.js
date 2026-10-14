@@ -54,6 +54,8 @@ let modus='laden', gebruiker=null, opslagStatus='', serverMelding='';
 const leegStart=()=>({...structuredClone(seed),clients:[],ratings:[]});
 function gebruikGegevens(g,afgevinkt){
   S=g&&g.cards?g:modus==='server'||modus==='dev'?leegStart():structuredClone(seed);
+  // ontwikkelaar terwijl de praktijk nog niets heeft opgeslagen: wel de eigen testcliënten
+  if(g&&!g.cards&&modus==='dev'){S.clients=g.clients||[];S.ratings=g.ratings||[]}
   // oudere opslag heeft nog geen categorielijst; kaarten met een onbekende categorie krijgen er een
   if(!S.cats)S.cats=structuredClone(seed.cats);
   S.cards.forEach(c=>{if(!S.cats.some(x=>x.name===c.cat))S.cats.push({name:c.cat,color:vrijeKleur()})});
@@ -63,6 +65,8 @@ function gebruikGegevens(g,afgevinkt){
   Object.keys(done).forEach(k=>{if(Array.isArray(done[k]))done[k]={}});
   activeClient=S.clients[0]?.id||'';fbClient=activeClient;
   allSchemas().forEach(sortItems);
+  // nieuwe database: de beginoefeningen en -schema's meteen opslaan, zodat cliënten (ook testcliënten) ze kunnen laden
+  if(modus==='server'&&!(g&&g.cards))save();
 }
 // Ingelogde cliënt: een mini-praktijk met alleen het eigen schema, zodat client() hetzelfde werkt
 function gebruikMijn(r){
@@ -117,7 +121,7 @@ function render(){
   $('#overlay').innerHTML=sheet?sheetHtml():linkCard?linkHtml():imp?importHtml():catBeheer?catBeheerHtml():indBeheer?indBeheerHtml():devBeheer?devHtml():'';
 }
 const demoBalk=()=>modus==='demo'?`<p class="demo-balk" role="note"><b>Demo</b> · ${serverMelding?esc(serverMelding)+' ':''}Gegevens worden alleen in deze browser bewaard. Gebruik geen echte namen.</p>`
-  :modus==='dev'?`<p class="demo-balk" role="note"><b>Ontwikkelaar</b> · Je ziet de echte oefeningen en schema's met drie testcliënten. Wijzigingen worden niet opgeslagen; herladen zet alles terug.</p>`:'';
+  :modus==='dev'?`<p class="demo-balk" role="note"><b>Ontwikkelaar</b> · Je ziet de echte oefeningen en schema's met je eigen testcliënten. Alleen de testcliënten worden opgeslagen; wijzigingen aan oefeningen en schema's niet (herladen zet ze terug).</p>`:'';
 function voetTekst(){
   const st={bezig:'Opslaan…',opgeslagen:'Opgeslagen ✓',fout:'Niet opgeslagen, nieuwe poging volgt…'}[opslagStatus]||'';
   $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&['server','client','dev'].includes(modus)?`ingelogd als ${gebruiker.naam}`:'',modus==='server'||modus==='client'?st:''].filter(Boolean).join(' · ');
@@ -143,7 +147,7 @@ async function inloggen(){
   modus=r.rol==='ontwikkelaar'?'dev':'server';
   const g=await Opslag.laad();
   if(!g){modus='login';render();return}
-  gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();if(modus==='server')laadAccounts();
+  gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();laadAccounts();
 }
 async function uitloggen(){
   await Opslag.uitloggen();modus='login';gebruiker=null;S=structuredClone(seed);done={};accounts={};accNieuw={};accFout={};devBeheer=null;
@@ -226,8 +230,8 @@ function therapist(){
   return `<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h1>Praktijkoverzicht</h1>
     <p class="lede">Sleep oefenkaarten naar een schema, of klik op een kaart om hem te koppelen. Sleep ze terug of naar de prullenbak om ze eruit te halen.</p></div>
     ${modus==='demo'?'<button class="btn danger small" data-act="reset-demo" style="flex:0 0 auto">Voorbeelddata herstellen</button>':''}
-    ${modus==='server'?`<span style="flex:0 0 auto;display:flex;gap:6px;flex-wrap:wrap">${heeftTestClienten()?'':'<button class="btn ghost small" data-act="test-clienten">+ Testcliënten</button>'}
-      <button class="btn ghost small" data-act="dev-open">Ontwikkelaar-account</button></span>`:''}</div>
+    ${modus==='server'?'<button class="btn ghost small" data-act="dev-open" style="flex:0 0 auto">Ontwikkelaar-account</button>':''}
+    ${modus==='dev'&&!heeftTestClienten()?'<button class="btn ghost small" data-act="test-clienten" style="flex:0 0 auto">+ Testcliënten</button>':''}</div>
   <section class="section">
     <div class="section-head"><div>${foldHead('lib','<h2>Kaartenbak</h2>')}<p class="lede" style="font-size:.92rem">${telTekst(kaarten.length,S.cards.length,'oefening','oefeningen')}</p></div>
       <div class="filters" role="group" aria-label="Filter op categorie">${['Alle',...cats()].map(c=>{const n=c==='Alle'?S.cards.length:S.cards.filter(x=>x.cat===c).length;
@@ -298,6 +302,7 @@ function clientCard(c){
           <button class="btn small" data-act="personalize" data-id="${c.id}">Aanpassen voor ${first}</button>
           <p class="demo" style="margin:0">Je maakt dan een persoonlijke kopie. Het basisschema blijft hetzelfde.</p></div>`
        :`<p class="empty">Kies een basisschema om te beginnen.</p>`}
+      <div class="row" style="justify-content:flex-end"><button type="button" class="btn danger small" style="flex:0 0 auto" data-act="del-client" data-id="${c.id}">Cliënt verwijderen</button></div>
     </div>`:''}
   </article>`;
 }
@@ -463,6 +468,15 @@ document.addEventListener('click',ev=>{
   if(a==='personalize'){const c=S.clients.find(x=>x.id===b.dataset.id),b0=schemaById(c.schema);
     c.custom={...structuredClone(b0),id:'p-'+c.id,client:c.id,base:b0.id};delete c.custom.indicatie;delete c.custom.subcategorie;save();render();
     folded['open-'+c.id]=true;saveFold();render();$('#cl-'+c.id)?.scrollIntoView({behavior:'smooth',block:'start'});toast('Persoonlijk schema gemaakt')}
+  if(a==='del-client'){
+    if(!b.dataset.confirm){b.dataset.confirm=1;b.textContent=accounts[b.dataset.id]?'Ook het account en alles wat is ingevuld verdwijnt. Zeker?':'Zeker weten? Klik nogmaals';return}
+    const c=S.clients.find(x=>x.id===b.dataset.id);if(!c)return;const undo=snapshot();
+    // alles van deze cliënt weg: beoordelingen en afvinklijsten (de server ruimt bij het opslaan ook account en ingevulde dagen op)
+    S.clients=S.clients.filter(x=>x!==c);S.ratings=S.ratings.filter(r=>r.c!==c.id);
+    Object.keys(done).forEach(k=>{if(k.startsWith(c.id+':'))delete done[k]});
+    delete folded['open-'+c.id];saveFold();delete accNieuw[c.id];delete accFout[c.id];
+    if(activeClient===c.id)activeClient=S.clients[0]?.id||'';if(fbClient===c.id)fbClient=activeClient;
+    save();render();toast(`${c.name} verwijderd`,undo);if(accounts[c.id])setTimeout(laadAccounts,1500)}
   if(a==='open-client'){folded['open-'+b.dataset.id]=!folded['open-'+b.dataset.id];saveFold();render();return}
   if(a==='open-all'){const all=S.clients.every(c=>isOpen(c.id));S.clients.forEach(c=>folded['open-'+c.id]=!all);saveFold();render();return}
   if(a==='reset-custom'){if(!b.dataset.confirm){b.dataset.confirm=1;b.textContent='Aanpassingen wissen?';return}
@@ -602,5 +616,5 @@ Opslag.start().then(r=>{
   if(modus==='client'){laadMijn();return}
   if(modus!=='login')gebruikGegevens(r.gegevens,r.afgevinkt);
   render();
-  if(modus==='server')laadAccounts();
+  if(modus==='server'||modus==='dev')laadAccounts();
 });
