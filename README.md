@@ -11,6 +11,8 @@ Prototype van een oefenschema-app voor kinderfysiotherapie (rug).
 - `js/import.js`: oefeningen importeren uit Excel (knop in de kaartenbak). Leest het bestand met SheetJS (`js/vendor/xlsx.full.min.js`, Apache-2.0-licentie), dat pas laadt als je het importvenster opent
 - `js/opslag.js`: alle opslag op één plek. Op app.groei-sterker.nl praat dit met de API (`api/`); zonder server (GitHub Pages-preview, lokaal) werkt de app als demo met opslag in de browser. Wil je naar een andere database (bijv. Supabase), dan vervang je alleen dit bestand
 - `api/`: PHP-API op Hostnet (inloggen en gegevens in MySQL). `api/config.php` staat niet in git: de workflow maakt het bij het uploaden aan uit de GitHub-secrets `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS` en `SETUP_CODE`. Eenmalig installeren via `https://app.groei-sterker.nl/api/setup.php` (vraagt de installatiecode)
+- `js/accounts.js`: inloggen voor cliënten. De therapeut maakt in de cliëntkaart een account (gebruikersnaam + makkelijk wachtwoord). Een ingelogde cliënt ziet alleen het eigen schema en blijft 30 dagen ingelogd; afvinken en smileys gaan naar de tabel `client_dagen`, apart van de praktijkgegevens. Een bestaande database krijgt de nieuwe kolommen en tabel vanzelf bij het openen van de app
+- Ontwikkelaar-account (knop in het praktijkoverzicht, alleen voor de therapeut): ziet de echte oefeningen en schema's, maar de server vervangt alle cliënten door drie testcliënten (Testpiet 6, Testduif 16, Testpiloot 22) met verzonnen voortgang (`dev_gegevens()` in `api/lib.php`). Wijzigingen van de ontwikkelaar worden nergens opgeslagen
 
 Met **Voorbeelddata herstellen** (rechtsboven in de therapeutweergave, twee keer klikken) zet je alles terug.
 

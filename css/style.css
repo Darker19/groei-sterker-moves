@@ -280,7 +280,7 @@ textarea{resize:vertical;min-height:60px}
 .filter:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Inloggen en demo-melding */
-body:is([data-modus="login"],[data-modus="laden"]) .seg{visibility:hidden}
+body:is([data-modus="login"],[data-modus="laden"],[data-modus="client"]) .seg{visibility:hidden}
 .login{max-width:400px;margin:40px auto 0;background:var(--surface);border:2px solid var(--head-line);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:12px}
 .login img{width:72px;height:auto;align-self:center}
 .login h1{align-self:center}
@@ -323,3 +323,13 @@ body:is([data-modus="login"],[data-modus="laden"]) .seg{visibility:hidden}
 .ind-fold{padding:4px;margin:0}
 .ind-fold:disabled{opacity:.35;cursor:default}
 .ind-groep:not(.open){padding-block:6px}
+
+/* inloggen voor cliënten (therapeut, in de cliëntkaart) */
+.acc{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:12px;margin-top:4px}
+.acc-info{margin:0;font-size:.92rem}
+.acc-ww{background:var(--head);border:2px solid var(--head-line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.acc-ww dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}
+.acc-ww dt{color:var(--muted);font-size:.85rem}
+.acc-ww dd{margin:0;font-weight:700;word-break:break-all}
+.acc-ww small{color:var(--muted)}
+.mijn-acc{display:flex;flex-direction:column;gap:10px;margin-top:12px;max-width:420px}

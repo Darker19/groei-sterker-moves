@@ -47,22 +47,45 @@ const isF=k=>!!folded[k];
 const CHEV=`<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 6l3 3 3-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const foldHead=(k,inner)=>`<button class="fold" data-act="fold" data-k="${k}" aria-expanded="${!isF(k)}">${CHEV}${inner}</button>`;
 let S=structuredClone(seed), done={};
-// modus: 'laden', 'login', 'server' (ingelogd, gegevens in de database) of 'demo' (alleen deze browser)
+// modus: 'laden', 'login', 'server' (therapeut ingelogd, gegevens in de database), 'client' (cliënt ingelogd: alleen het eigen schema)
+// of 'demo' (alleen deze browser)
 let modus='laden', gebruiker=null, opslagStatus='', serverMelding='';
 // Nieuwe database: wel de voorbeeldoefeningen en -schema's, maar geen (verzonnen) cliënten
 const leegStart=()=>({...structuredClone(seed),clients:[],ratings:[]});
 function gebruikGegevens(g,afgevinkt){
-  S=g&&g.cards?g:modus==='server'?leegStart():structuredClone(seed);
+  S=g&&g.cards?g:modus==='server'||modus==='dev'?leegStart():structuredClone(seed);
   // oudere opslag heeft nog geen categorielijst; kaarten met een onbekende categorie krijgen er een
   if(!S.cats)S.cats=structuredClone(seed.cats);
   S.cards.forEach(c=>{if(!S.cats.some(x=>x.name===c.cat))S.cats.push({name:c.cat,color:vrijeKleur()})});
   registreerIndicaties();
-  done=afgevinkt||{};activeClient=S.clients[0]?.id||'';fbClient=activeClient;
+  done=afgevinkt||{};
+  // PHP maakt van een leeg object een lege lijst: terugzetten, anders gaat afvinken verloren bij opslaan
+  Object.keys(done).forEach(k=>{if(Array.isArray(done[k]))done[k]={}});
+  activeClient=S.clients[0]?.id||'';fbClient=activeClient;
   allSchemas().forEach(sortItems);
+}
+// Ingelogde cliënt: een mini-praktijk met alleen het eigen schema, zodat client() hetzelfde werkt
+function gebruikMijn(r){
+  const c=r.client;
+  S={cats:r.cats||[],cards:r.kaarten||[],schemas:r.schema?[r.schema]:[],indLijst:[],ratings:[],
+    clients:[{id:c.id,name:c.name,schema:r.schema?.id||''}]};
+  done={};
+  Object.entries(r.dagen||{}).forEach(([d,x])=>{done[c.id+':'+d]=Array.isArray(x.afgevinkt)?{}:x.afgevinkt;
+    (x.beoordelingen||[]).forEach(b=>S.ratings.push({c:c.id,d,...b}))});
+  activeClient=c.id;allSchemas().forEach(sortItems);
+}
+async function laadMijn(){
+  const r=await Opslag.laadMijn();
+  if(!r){modus='login';gebruiker=null;render();return}
+  if(r.fout){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">Je schema kan nu niet geladen worden. Probeer het later opnieuw.</p>`;return}
+  gebruikMijn(r);view='cli';render();
 }
 let view='ther', activeClient='c1', fbClient='c1', editSchema=null, editItem=null, sheet=null, linkCard=null, catBeheer=null;
 const saveFold=()=>Opslag.bewaarIngeklapt(folded);
-const save=()=>{allSchemas().forEach(sortItems);Opslag.bewaarGegevens(S);Opslag.bewaarAfgevinkt(done)};
+const save=()=>{
+  if(modus==='client'){const c=activeClient, d=today();   // cliënt: alleen de eigen voortgang van vandaag
+    Opslag.bewaarVoortgang({datum:d,afgevinkt:done[c+':'+d]||{},beoordelingen:S.ratings.filter(r=>r.c===c&&r.d===d).map(({e,hard,fun})=>({e,hard,fun}))});return}
+  allSchemas().forEach(sortItems);Opslag.bewaarGegevens(S);Opslag.bewaarAfgevinkt(done)};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const initials=n=>n.split(' ').filter(Boolean).map(w=>w[0]).filter(c=>c===c.toUpperCase()).slice(0,2).join('');
@@ -83,19 +106,21 @@ function snapshot(){const before=JSON.stringify(S);return ()=>{S=JSON.parse(befo
 
 function render(){
   document.body.dataset.modus=modus;
-  $('#uitloggen').hidden=modus!=='server';
+  $('#uitloggen').hidden=!['server','client','dev'].includes(modus);
   voetTekst();
   if(modus==='laden'){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">Laden…</p>`;return}
   if(modus==='login'){$('#app').innerHTML=loginHtml();$('#overlay').innerHTML='';return}
+  if(modus==='client'){$('#app').innerHTML=client();$('#overlay').innerHTML='';return}
   $('#v-ther').setAttribute('aria-pressed',view==='ther');
   $('#v-cli').setAttribute('aria-pressed',view==='cli');
   $('#app').innerHTML=demoBalk()+(view==='ther'?therapist():client());
-  $('#overlay').innerHTML=sheet?sheetHtml():linkCard?linkHtml():imp?importHtml():catBeheer?catBeheerHtml():indBeheer?indBeheerHtml():'';
+  $('#overlay').innerHTML=sheet?sheetHtml():linkCard?linkHtml():imp?importHtml():catBeheer?catBeheerHtml():indBeheer?indBeheerHtml():devBeheer?devHtml():'';
 }
-const demoBalk=()=>modus==='demo'?`<p class="demo-balk" role="note"><b>Demo</b> · ${serverMelding?esc(serverMelding)+' ':''}Gegevens worden alleen in deze browser bewaard. Gebruik geen echte namen.</p>`:'';
+const demoBalk=()=>modus==='demo'?`<p class="demo-balk" role="note"><b>Demo</b> · ${serverMelding?esc(serverMelding)+' ':''}Gegevens worden alleen in deze browser bewaard. Gebruik geen echte namen.</p>`
+  :modus==='dev'?`<p class="demo-balk" role="note"><b>Ontwikkelaar</b> · Je ziet de echte oefeningen en schema's met drie testcliënten. Wijzigingen worden niet opgeslagen; herladen zet alles terug.</p>`:'';
 function voetTekst(){
   const st={bezig:'Opslaan…',opgeslagen:'Opgeslagen ✓',fout:'Niet opgeslagen, nieuwe poging volgt…'}[opslagStatus]||'';
-  $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&modus==='server'?`ingelogd als ${gebruiker.naam}`:'',modus==='server'?st:''].filter(Boolean).join(' · ');
+  $('#versie').textContent=[`RugSchema · versie ${VERSIE.nummer} · ${VERSIE.datum}`,gebruiker&&['server','client','dev'].includes(modus)?`ingelogd als ${gebruiker.naam}`:'',modus==='server'||modus==='client'?st:''].filter(Boolean).join(' · ');
 }
 
 /* ---------- Inloggen ---------- */
@@ -104,22 +129,24 @@ function loginHtml(fout=''){
     <img src="img/olifant.png" alt="" width="444" height="512"><h1>Inloggen</h1>
     <p class="lede">Log in om RugSchema te gebruiken.</p>
     <p class="imp-fout" id="login-fout" role="alert" ${fout?'':'hidden'}>${esc(fout)}</p>
-    <label class="field"><span>E-mailadres</span><input id="li-email" type="email" autocomplete="username" required></label>
+    <label class="field"><span>E-mailadres of gebruikersnaam</span><input id="li-email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
     <label class="field"><span>Wachtwoord</span><input id="li-ww" type="password" autocomplete="current-password" required></label>
     <button class="btn big">Inloggen</button></form>`;
 }
-const LOGIN_FOUT={onjuist:'E-mailadres of wachtwoord klopt niet.','te-vaak':'Te veel pogingen. Probeer het over een kwartier opnieuw.','geen-verbinding':'Geen verbinding met de server. Controleer je internet.'};
+const LOGIN_FOUT={onjuist:'Gebruikersnaam of wachtwoord klopt niet.','te-vaak':'Te veel pogingen. Probeer het over een kwartier opnieuw.','geen-verbinding':'Geen verbinding met de server. Controleer je internet.'};
 async function inloggen(){
   const knop=$('#login-form button'), f=$('#login-fout');knop.disabled=true;knop.textContent='Bezig…';
-  const r=await Opslag.login($('#li-email').value.trim(),$('#li-ww').value);
+  const r=await Opslag.login($('#li-email').value.trim().toLowerCase(),$('#li-ww').value);
   if(!r.ok){knop.disabled=false;knop.textContent='Inloggen';f.textContent=LOGIN_FOUT[r.fout]||'Inloggen lukt niet. Probeer het later opnieuw.';f.hidden=false;$('#li-ww').select();return}
-  gebruiker=r.gebruiker;modus='server';
+  gebruiker=r.gebruiker;
+  if(r.rol==='client'){modus='client';await laadMijn();return}
+  modus=r.rol==='ontwikkelaar'?'dev':'server';
   const g=await Opslag.laad();
   if(!g){modus='login';render();return}
-  gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();
+  gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();if(modus==='server')laadAccounts();
 }
 async function uitloggen(){
-  await Opslag.uitloggen();modus='login';gebruiker=null;S=structuredClone(seed);done={};
+  await Opslag.uitloggen();modus='login';gebruiker=null;S=structuredClone(seed);done={};accounts={};accNieuw={};accFout={};devBeheer=null;
   sheet=linkCard=imp=catBeheer=null;editSchema=editItem=null;opslagStatus='';render();
 }
 Opslag.opStatus(st=>{
@@ -198,7 +225,8 @@ function therapist(){
     &&(!fInd||indNorm(c.indicatie)===indNorm(fInd)&&(fSub==null||indNorm(c.subcategorie)===indNorm(fSub))));
   return `<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h1>Praktijkoverzicht</h1>
     <p class="lede">Sleep oefenkaarten naar een schema, of klik op een kaart om hem te koppelen. Sleep ze terug of naar de prullenbak om ze eruit te halen.</p></div>
-    ${modus==='demo'?'<button class="btn danger small" data-act="reset-demo" style="flex:0 0 auto">Voorbeelddata herstellen</button>':''}</div>
+    ${modus==='demo'?'<button class="btn danger small" data-act="reset-demo" style="flex:0 0 auto">Voorbeelddata herstellen</button>':''}
+    ${modus==='server'?'<button class="btn ghost small" data-act="dev-open" style="flex:0 0 auto">Ontwikkelaar-account</button>':''}</div>
   <section class="section">
     <div class="section-head"><div>${foldHead('lib','<h2>Kaartenbak</h2>')}<p class="lede" style="font-size:.92rem">${telTekst(kaarten.length,S.cards.length,'oefening','oefeningen')}</p></div>
       <div class="filters" role="group" aria-label="Filter op categorie">${['Alle',...cats()].map(c=>{const n=c==='Alle'?S.cards.length:S.cards.filter(x=>x.cat===c).length;
@@ -238,7 +266,7 @@ function therapist(){
       ${clienten.map(clientCard).join('')||(S.clients.length?'<p class="empty">Geen cliënten gevonden.</p>':'')}
       <form id="add-client" class="row add-client">
         <input id="new-client" placeholder="Naam nieuwe cliënt" aria-label="Naam nieuwe cliënt" style="flex:2 1 160px">
-        <input id="new-age" type="number" min="0" max="17" placeholder="Leeftijd" aria-label="Leeftijd" style="flex:1 1 80px">
+        <input id="new-age" type="number" min="0" placeholder="Leeftijd" aria-label="Leeftijd" style="flex:1 1 80px">
         <select id="new-ind" aria-label="Indicatie" style="flex:2 1 140px;width:auto"><option value="">Indicatie (optioneel)</option>${S.indLijst.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}</select>
         <button class="btn" style="flex:0 0 auto">Cliënt toevoegen</button></form>
       <p class="demo" style="margin:0">De namen, oefeningen en beoordelingen zijn voorbeelden.</p></div>`}
@@ -261,6 +289,7 @@ function clientCard(c){
       <label class="field" style="max-width:360px"><span>Basisschema</span>
         <select id="sel-${c.id}" data-act="assign" data-id="${c.id}">
           <option value="">Geen schema</option>${S.schemas.map(x=>`<option value="${x.id}" ${c.schema===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+      ${accountHtml(c)}
       ${c.custom?columnHtml(c.custom)
        :base?`<div class="preview">
           <div class="label">${esc(base.name)} · ${base.items.length} oefeningen</div>
@@ -348,9 +377,9 @@ function client(){
   if(!c)return `<p class="empty" style="margin-top:20px">Er zijn nog geen cliënten.</p>`;
   activeClient=c.id;
   const s=effective(c), first=esc(c.name.split(' ')[0]);
-  const picker=`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
+  const picker=modus==='client'?'<div style="margin-top:20px"></div>':`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
     <select id="cli-pick" data-act="pick">${S.clients.map(x=>`<option value="${x.id}" ${x.id===c.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;
-  if(!s)return picker+`<div class="panel" style="margin-top:16px;max-width:720px"><h2>Hoi ${first}!</h2><p class="empty">Je fysiotherapeut zet binnenkort je oefeningen voor je klaar.</p></div>`;
+  if(!s)return picker+`<div class="panel" style="margin-top:16px;max-width:720px"><h2>Hoi ${first}!</h2><p class="empty">Je fysiotherapeut zet binnenkort je oefeningen voor je klaar.</p></div>`+(modus==='client'?`<div style="margin-top:16px;max-width:720px">${mijnAccountHtml()}</div>`:'');
   const key=c.id+':'+today(), d=done[key]||{};
   const items=s.items.filter(it=>card(it.card));
   const n=items.filter(it=>d[it.card]).length, tot=items.length;
@@ -373,6 +402,7 @@ function client(){
           ${d[e.id]?rateBlock(c.id,e.id):''}
         </div></article>`}).join('')}</div>
     ${n===tot&&tot?`<div class="panel" style="text-align:center"><div style="font-size:2rem">🏆</div><strong style="color:var(--ok)">Alles gedaan voor vandaag. Super gedaan!</strong></div>`:''}
+    ${modus==='client'?mijnAccountHtml():''}
   </div>`;
 }
 
@@ -568,6 +598,8 @@ document.addEventListener('submit',ev=>{if(ev.target.id==='login-form')inloggen(
 render();
 Opslag.start().then(r=>{
   modus=r.modus;gebruiker=r.gebruiker||null;serverMelding=r.melding||'';
+  if(modus==='client'){laadMijn();return}
   if(modus!=='login')gebruikGegevens(r.gegevens,r.afgevinkt);
   render();
+  if(modus==='server')laadAccounts();
 });

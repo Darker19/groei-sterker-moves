@@ -6,6 +6,20 @@
 //   GET  gegevens   -> {gegevens, afgevinkt, versie}
 //   POST bewaar     {gegevens, afgevinkt, versie} -> {versie} of 409 als iemand anders intussen heeft opgeslagen
 //   POST wachtwoord {oud, nieuw}
+// Cliënt-accounts (alleen therapeut):
+//   GET  accounts                         -> {accounts: [{client_id, login, aangemaakt, laatst_ingelogd}]}
+//   POST account-maak {client_id, login}  -> {login, wachtwoord}   (het wachtwoord is daarna niet meer op te vragen)
+//   POST account-reset {client_id}        -> {login, wachtwoord}
+//   POST account-weg {client_id}
+// Ontwikkelaar-account (alleen therapeut; er is er hooguit één):
+//   GET  dev-account                      -> {account: {login, aangemaakt, laatst_ingelogd} of null}
+//   POST dev-maak {login}                 -> {login, wachtwoord}
+//   POST dev-reset                        -> {login, wachtwoord}
+//   POST dev-weg
+// Cliënt:
+//   GET  mijn                             -> {client, schema, kaarten, cats, vandaag}  (alleen het eigen schema)
+//   POST voortgang {datum, afgevinkt, beoordelingen}
+//   POST mijn-account {oud, login?, wachtwoord?}  -> {login}   eigen gebruikersnaam en/of wachtwoord wijzigen
 require __DIR__ . '/lib.php';
 
 $actie = $_GET['a'] ?? '';
@@ -13,9 +27,9 @@ $actie = $_GET['a'] ?? '';
 if ($actie === 'sessie') {
   // eerst controleren of de server is ingesteld en de database bereikbaar is (anders 503: de app draait dan als demo)
   instellingen();
-  db();
+  werk_database_bij();
   $g = huidige_gebruiker();
-  antwoord($g ? ['ingelogd' => true, 'naam' => $g['naam'], 'email' => $g['email']] : ['ingelogd' => false]);
+  antwoord($g ? ['ingelogd' => true, 'naam' => $g['naam'], 'email' => $g['email'], 'rol' => $g['rol']] : ['ingelogd' => false]);
 }
 
 if ($actie === 'login') {
@@ -29,7 +43,7 @@ if ($actie === 'login') {
   $q->execute([client_ip(), $email, $grens]);
   if ((int)$q->fetchColumn() >= MAX_POGINGEN) antwoord(['fout' => 'te-vaak'], 429);
 
-  $q = $db->prepare('SELECT id, naam, email, wachtwoord FROM gebruikers WHERE email = ?');
+  $q = $db->prepare('SELECT id, naam, email, wachtwoord, rol FROM gebruikers WHERE email = ?');
   $q->execute([$email]);
   $g = $q->fetch();
   // ook zonder gebruiker een wachtwoord controleren, zodat de responstijd niet verraadt of het e-mailadres bestaat
@@ -43,8 +57,9 @@ if ($actie === 'login') {
   }
   $db->prepare('DELETE FROM inlogpogingen WHERE email = ? OR tijd < ?')->execute([$email, nu('-1 day')]);
   $db->prepare('DELETE FROM sessies WHERE verloopt < ?')->execute([nu()]);
-  start_sessie($g['id']);
-  antwoord(['ingelogd' => true, 'naam' => $g['naam'], 'email' => $g['email']]);
+  $db->prepare('UPDATE gebruikers SET laatst_ingelogd = ? WHERE id = ?')->execute([nu(), $g['id']]);
+  start_sessie($g['id'], $g['rol']);
+  antwoord(['ingelogd' => true, 'naam' => $g['naam'], 'email' => $g['email'], 'rol' => $g['rol']]);
 }
 
 if ($actie === 'uitloggen') {
@@ -56,16 +71,29 @@ if ($actie === 'uitloggen') {
 }
 
 if ($actie === 'gegevens') {
-  eis_gebruiker();
+  $g = eis_therapeut_of_ontwikkelaar();
   $r = db()->query('SELECT gegevens, afgevinkt, versie FROM praktijkdata WHERE id = 1')->fetch();
-  antwoord($r
-    ? ['gegevens' => json_decode($r['gegevens'], true), 'afgevinkt' => json_decode($r['afgevinkt'], true), 'versie' => (int)$r['versie']]
-    : ['gegevens' => null, 'afgevinkt' => new stdClass(), 'versie' => 0]);
+  if (!$r) antwoord(['gegevens' => null, 'afgevinkt' => new stdClass(), 'versie' => 0]);
+  $gegevens = json_decode($r['gegevens'], true);
+  if ($g['rol'] === 'ontwikkelaar') {
+    [$gegevens, $afgevinkt] = dev_gegevens($gegevens);
+    antwoord(['gegevens' => $gegevens, 'afgevinkt' => $afgevinkt ?: new stdClass(), 'versie' => 0]);
+  }
+  $afgevinkt = json_decode($r['afgevinkt'], true) ?: [];
+  // wat cliënten zelf hebben ingevuld erbij zetten (dat gaat voor wat in de praktijkgegevens staat)
+  foreach (db()->query('SELECT client_id, datum, afgevinkt, beoordelingen FROM client_dagen')->fetchAll() as $d) {
+    $afgevinkt[$d['client_id'] . ':' . $d['datum']] = json_decode($d['afgevinkt']) ?: new stdClass();
+    $gegevens['ratings'] = array_values(array_filter($gegevens['ratings'] ?? [], function ($x) use ($d) {
+      return !(($x['c'] ?? '') === $d['client_id'] && ($x['d'] ?? '') === $d['datum']);
+    }));
+    foreach (json_decode($d['beoordelingen'], true) ?: [] as $b) $gegevens['ratings'][] = ['c' => $d['client_id'], 'd' => $d['datum']] + $b;
+  }
+  antwoord(['gegevens' => $gegevens, 'afgevinkt' => $afgevinkt ?: new stdClass(), 'versie' => (int)$r['versie']]);
 }
 
 if ($actie === 'bewaar') {
   eis_app_verzoek();
-  $g = eis_gebruiker();
+  $g = eis_therapeut();
   $in = invoer();
   if (!isset($in['gegevens']['cards']) || !is_array($in['gegevens']['cards'])) antwoord(['fout' => 'ongeldige-gegevens'], 400);
   $gegevens = json_encode($in['gegevens'], JSON_UNESCAPED_UNICODE);
@@ -84,12 +112,223 @@ if ($actie === 'bewaar') {
     $huidig = $db->query('SELECT versie FROM praktijkdata WHERE id = 1')->fetchColumn();
     antwoord(['fout' => 'conflict', 'versie' => (int)$huidig], 409);
   }
+  // accounts en gegevens van cliënten die niet meer bestaan opruimen
+  $ids = array_values(array_filter(array_map(function ($c) { return (string)($c['id'] ?? ''); }, $in['gegevens']['clients'] ?? [])));
+  $niet = $ids ? ' AND client_id NOT IN (' . implode(',', array_fill(0, count($ids), '?')) . ')' : '';
+  $q = $db->prepare("SELECT id FROM gebruikers WHERE rol = 'client'" . $niet);
+  $q->execute($ids);
+  foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $weg) {
+    $db->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$weg]);
+    $db->prepare('DELETE FROM gebruikers WHERE id = ?')->execute([$weg]);
+  }
+  $db->prepare('DELETE FROM client_dagen WHERE 1' . $niet)->execute($ids);
   antwoord(['versie' => $versie + 1]);
+}
+
+/* ---------- Cliënt-accounts (therapeut) ---------- */
+
+function zoek_client($id) {
+  foreach (praktijkgegevens()['clients'] ?? [] as $c) if (($c['id'] ?? null) === $id) return $c;
+  return null;
+}
+
+if ($actie === 'accounts') {
+  eis_therapeut();
+  $r = db()->query("SELECT client_id, email AS login, aangemaakt, laatst_ingelogd FROM gebruikers WHERE rol = 'client'")->fetchAll();
+  antwoord(['accounts' => $r]);
+}
+
+if ($actie === 'account-maak') {
+  eis_app_verzoek();
+  eis_therapeut();
+  $in = invoer();
+  $id = (string)($in['client_id'] ?? '');
+  $login = strtolower(trim((string)($in['login'] ?? '')));
+  if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $login)) antwoord(['fout' => 'ongeldige-login'], 400);
+  $c = zoek_client($id);
+  if (!$c) antwoord(['fout' => 'onbekende-client'], 404);
+  $db = db();
+  $q = $db->prepare('SELECT COUNT(*) FROM gebruikers WHERE email = ? OR client_id = ?');
+  $q->execute([$login, $id]);
+  if ((int)$q->fetchColumn() > 0) antwoord(['fout' => 'bestaat-al'], 409);
+  $ww = maak_client_wachtwoord();
+  $voornaam = explode(' ', trim((string)($c['name'] ?? '')))[0];
+  $db->prepare("INSERT INTO gebruikers (email, naam, wachtwoord, aangemaakt, rol, client_id) VALUES (?, ?, ?, ?, 'client', ?)")
+     ->execute([$login, mb_substr($voornaam, 0, 100), password_hash($ww, PASSWORD_DEFAULT), nu(), $id]);
+  antwoord(['login' => $login, 'wachtwoord' => $ww]);
+}
+
+if ($actie === 'account-reset') {
+  eis_app_verzoek();
+  eis_therapeut();
+  $in = invoer();
+  $q = db()->prepare("SELECT id, email FROM gebruikers WHERE rol = 'client' AND client_id = ?");
+  $q->execute([(string)($in['client_id'] ?? '')]);
+  $g = $q->fetch();
+  if (!$g) antwoord(['fout' => 'geen-account'], 404);
+  $ww = maak_client_wachtwoord();
+  db()->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
+  db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$g['id']]); // overal uitloggen
+  antwoord(['login' => $g['email'], 'wachtwoord' => $ww]);
+}
+
+if ($actie === 'account-weg') {
+  eis_app_verzoek();
+  eis_therapeut();
+  $in = invoer();
+  $q = db()->prepare("SELECT id FROM gebruikers WHERE rol = 'client' AND client_id = ?");
+  $q->execute([(string)($in['client_id'] ?? '')]);
+  $id = $q->fetchColumn();
+  if ($id) {
+    db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$id]);
+    db()->prepare('DELETE FROM gebruikers WHERE id = ?')->execute([$id]);
+  }
+  antwoord(['ok' => true]);
+}
+
+/* ---------- Ontwikkelaar-account (therapeut) ---------- */
+
+if ($actie === 'dev-account') {
+  eis_therapeut();
+  $r = db()->query("SELECT email AS login, aangemaakt, laatst_ingelogd FROM gebruikers WHERE rol = 'ontwikkelaar' LIMIT 1")->fetch();
+  antwoord(['account' => $r ?: null]);
+}
+
+if ($actie === 'dev-maak') {
+  eis_app_verzoek();
+  eis_therapeut();
+  $in = invoer();
+  $login = strtolower(trim((string)($in['login'] ?? '')));
+  if (!filter_var($login, FILTER_VALIDATE_EMAIL) && !preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $login)) antwoord(['fout' => 'ongeldige-login'], 400);
+  $db = db();
+  if ($db->query("SELECT COUNT(*) FROM gebruikers WHERE rol = 'ontwikkelaar'")->fetchColumn() > 0) antwoord(['fout' => 'bestaat-al'], 409);
+  $q = $db->prepare('SELECT COUNT(*) FROM gebruikers WHERE email = ?');
+  $q->execute([$login]);
+  if ((int)$q->fetchColumn() > 0) antwoord(['fout' => 'bestaat-al'], 409);
+  $ww = bin2hex(random_bytes(10));
+  $db->prepare("INSERT INTO gebruikers (email, naam, wachtwoord, aangemaakt, rol) VALUES (?, 'Ontwikkelaar', ?, ?, 'ontwikkelaar')")
+     ->execute([$login, password_hash($ww, PASSWORD_DEFAULT), nu()]);
+  antwoord(['login' => $login, 'wachtwoord' => $ww]);
+}
+
+if ($actie === 'dev-reset') {
+  eis_app_verzoek();
+  eis_therapeut();
+  $g = db()->query("SELECT id, email FROM gebruikers WHERE rol = 'ontwikkelaar' LIMIT 1")->fetch();
+  if (!$g) antwoord(['fout' => 'geen-account'], 404);
+  $ww = bin2hex(random_bytes(10));
+  db()->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
+  db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$g['id']]);
+  antwoord(['login' => $g['email'], 'wachtwoord' => $ww]);
+}
+
+if ($actie === 'dev-weg') {
+  eis_app_verzoek();
+  eis_therapeut();
+  foreach (db()->query("SELECT id FROM gebruikers WHERE rol = 'ontwikkelaar'")->fetchAll(PDO::FETCH_COLUMN) as $id) {
+    db()->prepare('DELETE FROM sessies WHERE gebruiker_id = ?')->execute([$id]);
+    db()->prepare('DELETE FROM gebruikers WHERE id = ?')->execute([$id]);
+  }
+  antwoord(['ok' => true]);
+}
+
+/* ---------- Cliënt ---------- */
+
+// Datum van de cliënt (diens "vandaag") accepteren als die hooguit een dag van de serverdatum afwijkt
+function geldige_datum($d) {
+  if (!is_string($d) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) return false;
+  return abs(strtotime($d) - strtotime(date('Y-m-d'))) <= 86400;
+}
+
+if ($actie === 'mijn') {
+  $g = eis_client();
+  $c = zoek_client($g['client_id']);
+  if (!$c) antwoord(['fout' => 'geen-toegang'], 403);
+  $p = praktijkgegevens();
+  $schema = $c['custom'] ?? null;
+  if (!$schema) foreach ($p['schemas'] ?? [] as $s) if (($s['id'] ?? null) === ($c['schema'] ?? '')) $schema = $s;
+  // alleen wat de cliënt nodig heeft: voornaam, eigen schema en de kaarten daaruit
+  $kaarten = [];
+  $cats = [];
+  if ($schema) {
+    $nodig = array_column($schema['items'] ?? [], 'card');
+    foreach ($p['cards'] ?? [] as $k) if (in_array($k['id'] ?? null, $nodig, true)) {
+      $kaarten[] = ['id' => $k['id'], 'name' => $k['name'] ?? '', 'cat' => $k['cat'] ?? '', 'note' => $k['note'] ?? ''];
+      $cats[$k['cat'] ?? ''] = true;
+    }
+    $schema = ['id' => $schema['id'] ?? 'schema', 'name' => $schema['name'] ?? '', 'days' => $schema['days'] ?? null, 'weeks' => $schema['weeks'] ?? null,
+      'items' => array_map(function ($i) { return ['card' => $i['card'], 'sets' => $i['sets'] ?? 0, 'reps' => $i['reps'] ?? 0, 'hold' => $i['hold'] ?? 0, 'rest' => $i['rest'] ?? 0]; }, $schema['items'] ?? [])];
+  }
+  $q = db()->prepare('SELECT datum, afgevinkt, beoordelingen FROM client_dagen WHERE client_id = ? AND datum >= ?');
+  $q->execute([$g['client_id'], date('Y-m-d', strtotime('-2 days'))]);
+  $dagen = [];
+  foreach ($q->fetchAll() as $d) $dagen[$d['datum']] = ['afgevinkt' => json_decode($d['afgevinkt']) ?: new stdClass(), 'beoordelingen' => json_decode($d['beoordelingen'], true) ?: []];
+  antwoord([
+    'client' => ['id' => $c['id'], 'name' => $g['naam']],
+    'schema' => $schema,
+    'kaarten' => $kaarten,
+    'cats' => array_values(array_filter($p['cats'] ?? [], function ($x) use ($cats) { return isset($cats[$x['name'] ?? '']); })),
+    'dagen' => $dagen ?: new stdClass(),
+  ]);
+}
+
+if ($actie === 'voortgang') {
+  eis_app_verzoek();
+  $g = eis_client();
+  $in = invoer();
+  $datum = $in['datum'] ?? '';
+  if (!geldige_datum($datum)) antwoord(['fout' => 'ongeldige-datum'], 400);
+  $af = [];
+  foreach ((array)($in['afgevinkt'] ?? []) as $k => $v) if (preg_match('/^[\w-]{1,40}$/', (string)$k) && $v) $af[$k] = true;
+  $bo = [];
+  foreach ((array)($in['beoordelingen'] ?? []) as $b) {
+    if (!is_array($b) || !preg_match('/^[\w-]{1,40}$/', (string)($b['e'] ?? ''))) continue;
+    $x = ['e' => (string)$b['e']];
+    foreach (['hard', 'fun'] as $f) if (isset($b[$f]) && in_array($b[$f], [1, 2, 3, 4, 5], true)) $x[$f] = $b[$f];
+    $bo[] = $x;
+  }
+  if (count($af) > 200 || count($bo) > 200) antwoord(['fout' => 'te-groot'], 413);
+  db()->prepare('REPLACE INTO client_dagen (client_id, datum, afgevinkt, beoordelingen, gewijzigd) VALUES (?, ?, ?, ?, ?)')
+      ->execute([$g['client_id'], $datum, json_encode($af ?: new stdClass()), json_encode($bo), nu()]);
+  antwoord(['ok' => true]);
+}
+
+if ($actie === 'mijn-account') {
+  eis_app_verzoek();
+  $g = eis_client();
+  $in = invoer();
+  $db = db();
+  // foute pogingen tellen mee voor de inlogbeperking, zodat het huidige wachtwoord hier niet te raden is
+  $q = $db->prepare('SELECT COUNT(*) FROM inlogpogingen WHERE (ip = ? OR email = ?) AND tijd > ?');
+  $q->execute([client_ip(), $g['email'], nu('-' . POGING_MINUTEN . ' minutes')]);
+  if ((int)$q->fetchColumn() >= MAX_POGINGEN) antwoord(['fout' => 'te-vaak'], 429);
+  $q = $db->prepare('SELECT wachtwoord FROM gebruikers WHERE id = ?');
+  $q->execute([$g['id']]);
+  if (!password_verify((string)($in['oud'] ?? ''), $q->fetchColumn())) {
+    $db->prepare('INSERT INTO inlogpogingen (ip, email, tijd) VALUES (?, ?, ?)')->execute([client_ip(), $g['email'], nu()]);
+    antwoord(['fout' => 'onjuist'], 401);
+  }
+  $login = strtolower(trim((string)($in['login'] ?? '')));
+  $ww = (string)($in['wachtwoord'] ?? '');
+  if ($login !== '' && $login !== $g['email']) {
+    if (!preg_match('/^[a-z0-9][a-z0-9._-]{2,39}$/', $login)) antwoord(['fout' => 'ongeldige-login'], 400);
+    $q = $db->prepare('SELECT COUNT(*) FROM gebruikers WHERE email = ?');
+    $q->execute([$login]);
+    if ((int)$q->fetchColumn() > 0) antwoord(['fout' => 'bestaat-al'], 409);
+    $db->prepare('UPDATE gebruikers SET email = ? WHERE id = ?')->execute([$login, $g['id']]);
+  } else $login = $g['email'];
+  if ($ww !== '') {
+    if (strlen($ww) < 8) antwoord(['fout' => 'te-kort'], 400);
+    $db->prepare('UPDATE gebruikers SET wachtwoord = ? WHERE id = ?')->execute([password_hash($ww, PASSWORD_DEFAULT), $g['id']]);
+    // andere apparaten uitloggen, dit apparaat blijft ingelogd
+    $db->prepare('DELETE FROM sessies WHERE gebruiker_id = ? AND token_hash <> ?')->execute([$g['id'], hash('sha256', $_COOKIE[SESSIE_COOKIE])]);
+  }
+  antwoord(['login' => $login]);
 }
 
 if ($actie === 'wachtwoord') {
   eis_app_verzoek();
-  $g = eis_gebruiker();
+  $g = eis_therapeut();
   $in = invoer();
   $nieuw = (string)($in['nieuw'] ?? '');
   if (strlen($nieuw) < 12) antwoord(['fout' => 'te-kort'], 400);
