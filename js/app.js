@@ -168,7 +168,7 @@ function toonConflict(){
   $('#overlay').innerHTML=`<div class="scrim"><div class="sheet" role="alertdialog" aria-label="Gegevens gewijzigd">
     <h2>Gegevens zijn ergens anders gewijzigd</h2>
     <p class="lede" style="margin:0">Op een ander apparaat of tabblad is intussen iets opgeslagen. Laad de nieuwste versie om verder te werken. Je laatste wijziging hier is niet opgeslagen.</p>
-    <div class="row" style="justify-content:flex-end"><button class="btn" style="flex:0 0 auto" onclick="location.reload()">Nieuwste versie laden</button></div></div></div>`;
+    <div class="row" style="justify-content:flex-end"><button class="btn" style="flex:0 0 auto" data-act="herlaad">Nieuwste versie laden</button></div></div></div>`;
 }
 
 /* ---------- Therapeut ---------- */
@@ -437,6 +437,7 @@ document.addEventListener('click',ev=>{
   if(drag&&drag.justDropped)return;
   const a=b.dataset.act;
   if(a==='close-sheet'){if(b.classList.contains('scrim')&&ev.target!==b)return;sheet=null;render()}
+  if(a==='herlaad')location.reload();
   if(a==='undo'&&undoFn){const f=undoFn;undoFn=null;f()}
   if(a==='new-card'){sheet={id:uid(),name:'',cat:catFilter==='Alle'?cats()[0]:catFilter,sets:3,reps:10,hold:0,rest:30,note:''};render();setTimeout(()=>$('#cf-name')?.focus(),0)}
   if(a==='link-card'){linkCard=b.dataset.id;render();$('#overlay .link-row')?.focus()}

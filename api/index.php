@@ -114,6 +114,10 @@ if ($actie === 'bewaar') {
   $in = invoer();
   if (!isset($in['gegevens']['cards']) || !is_array($in['gegevens']['cards'])) antwoord(['fout' => 'ongeldige-gegevens'], 400);
   $clients = is_array($in['gegevens']['clients'] ?? null) ? $in['gegevens']['clients'] : [];
+  // een cliënt-id mag niet ook in de andere rij staan: anders zou de ontwikkelaar via een testcliënt met hetzelfde id
+  // het account en de voortgang van een echte cliënt kunnen beheren
+  $ander = ids_van(clients_van($rij === RIJ_PRAKTIJK ? RIJ_ONTWIKKELAAR : RIJ_PRAKTIJK));
+  if (array_intersect(ids_van($clients), $ander)) antwoord(['fout' => 'ongeldige-gegevens'], 400);
   // ontwikkelaar: alleen de testcliënten en hun beoordelingen bewaren; oefeningen en schema's blijven van de therapeut
   $data = $rij === RIJ_ONTWIKKELAAR ? ['clients' => $clients, 'ratings' => $in['gegevens']['ratings'] ?? []] : $in['gegevens'];
   $gegevens = versleutel(json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -134,7 +138,7 @@ if ($actie === 'bewaar') {
     antwoord(['fout' => 'conflict', 'versie' => (int)$q->fetchColumn()], 409);
   }
   // accounts en gegevens van cliënten die nergens meer bestaan opruimen (in geen van beide rijen)
-  $ids = array_merge(ids_van($clients), ids_van(clients_van($rij === RIJ_PRAKTIJK ? RIJ_ONTWIKKELAAR : RIJ_PRAKTIJK)));
+  $ids = array_merge(ids_van($clients), $ander);
   $niet = $ids ? ' AND client_id NOT IN (' . implode(',', array_fill(0, count($ids), '?')) . ')' : '';
   $q = $db->prepare("SELECT id FROM gebruikers WHERE rol = 'client'" . $niet);
   $q->execute($ids);

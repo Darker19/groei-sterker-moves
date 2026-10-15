@@ -21,6 +21,7 @@ function antwoord($data, $code = 200) {
   header('Content-Type: application/json; charset=utf-8');
   header('Cache-Control: no-store');
   header('X-Content-Type-Options: nosniff');
+  header('Strict-Transport-Security: max-age=31536000');
   echo json_encode($data, JSON_UNESCAPED_UNICODE);
   exit;
 }

@@ -1,3 +1,6 @@
+// Nooit via http: anders gaat het wachtwoord leesbaar over internet (vangnet als de server niet zelf doorstuurt)
+if(location.protocol==='http:'&&/(^|\.)groei-sterker\.nl$/.test(location.hostname))location.replace('https:'+location.href.slice(5));
+
 // Alle opslag van de app zit in dit ene bestand. De rest van de app gebruikt alleen deze functies:
 //   start()            -> {modus, gebruiker, gegevens, afgevinkt, melding}
 //                         modus 'server' (therapeut ingelogd), 'client' (cliënt ingelogd), 'dev' (ontwikkelaar: echte oefeningen
