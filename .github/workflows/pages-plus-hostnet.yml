@@ -141,16 +141,22 @@ jobs:
             file_put_contents("site/api/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
           php -l site/api/config.php
 
-      - name: FTP deploy to Hostnet
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
-        with:
-          server: ${{ secrets.SFTP_HOST }}
-          username: ${{ secrets.SFTP_USER }}
-          password: ${{ secrets.SFTP_PASSWORD }}
-          protocol: ftps   # FTP over TLS: wachtwoord en config.php (met DATA_KEY) gaan versleuteld over internet
-          port: 21
-          local-dir: site/
-          server-dir: ${{ env.SERVER_DIR }}
+      # FTP over TLS (FTPS): wachtwoord en config.php (met DATA_KEY) gaan versleuteld over internet.
+      # Met lftp, omdat FTP-Deploy-Action bij FTPS de servernaam (SNI) niet meestuurt en Hostnet dan de TLS-verbinding weigert.
+      # SFTP_HOST moet daarom de hostnaam zijn (ftp.cebjgz0mr.service.one), geen IP-adres.
+      - name: FTPS deploy to Hostnet
+        env:
+          FTP_HOST: ${{ secrets.SFTP_HOST }}
+          FTP_USER: ${{ secrets.SFTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          lftp --env-password -u "$FTP_USER" "$FTP_HOST" -e "
+            set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate true;
+            set net:max-retries 2; set net:timeout 30; set cmd:fail-exit true;
+            mirror -R --verbose --parallel=4 site/ $SERVER_DIR;
+            rm -f $SERVER_DIR.ftp-deploy-sync-state.json;
+            bye"
 
       - name: Discord — Groei Sterker Moves live op app.groei-sterker.nl
         if: success()
