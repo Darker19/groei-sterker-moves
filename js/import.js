@@ -222,7 +222,8 @@ function impKeuzelijsten(X,data,blad,lijsten){
   f.size=f.content.length;
   return X.CFB.write(zip,{type:'array',fileType:'zip',compression:true});
 }
-// Bladen: [naam, rijen, kolombreedtes]; lijsten: kolommen voor het blad "Lijsten"; keuze: [[bereik in blad 1, kolomletter in Lijsten, aantal]]
+// Bladen: [naam, rijen, kolombreedtes]; lijsten: kolommen voor het blad "Lijsten"; keuze: [[bereik in blad 1, kolomletter in Lijsten]]
+// De keuzelijst groeit mee (OFFSET+COUNTA): wat je onderaan een kolom in "Lijsten" toevoegt, staat meteen in de keuzelijst.
 function impMaakBestand(X,naam,bladen,lijsten,keuze){
   const wb=X.utils.book_new();
   for(const [n,rijen,breed] of bladen){const b=X.utils.aoa_to_sheet(rijen);b['!cols']=breed.map(w=>({wch:w}));X.utils.book_append_sheet(wb,b,n)}
@@ -230,7 +231,7 @@ function impMaakBestand(X,naam,bladen,lijsten,keuze){
   const lb=X.utils.aoa_to_sheet([lijsten.map(l=>l[0]),...Array.from({length:n},(_,i)=>lijsten.map(l=>l[1][i]??''))]);
   lb['!cols']=lijsten.map(()=>({wch:36}));X.utils.book_append_sheet(wb,lb,'Lijsten');
   let data=X.write(wb,{type:'array',bookType:'xlsx'});
-  try{data=impKeuzelijsten(X,data,1,keuze.filter(k=>k[2]>0).map(([bereik,kol,aantal])=>[bereik,`Lijsten!$${kol}$2:$${kol}$${aantal+1}`]))}
+  try{data=impKeuzelijsten(X,data,1,keuze.map(([bereik,kol])=>[bereik,`OFFSET(Lijsten!$${kol}$2,0,0,MAX(1,COUNTA(Lijsten!$${kol}:$${kol})-1),1)`]))}
   catch(e){/* zonder keuzelijsten is het bestand nog steeds bruikbaar */}
   const url=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
   const a=Object.assign(document.createElement('a'),{href:url,download:naam});
@@ -245,12 +246,12 @@ function impVoorbeeld(soort){
         ['Voorbeeld · Fase A',3,4,ex(0),3,10,5,30],['Voorbeeld · Fase A','','',ex(1),'','','',''],['Voorbeeld · Fase A','','',ex(2),2,8,'',45],
         ['Voorbeeld · Fase B',2,6,ex(3),'','','',''],['Voorbeeld · Fase B','','',ex(4),3,12,3,45]];
       const uitleg=[['Kolom','Uitleg'],
-        ['Schema','Verplicht. Bestaat het schema al (zelfde naam), dan worden de oefeningen eraan toegevoegd; anders wordt het aangemaakt. Leeg = zelfde schema als de rij erboven.'],
+        ['Schema','Verplicht. Bestaat het schema al (zelfde naam), dan worden de oefeningen eraan toegevoegd; anders wordt het aangemaakt. Leeg = zelfde schema als de rij erboven. Zet een nieuw schema onderaan in het blad Lijsten, dan staat het meteen in de keuzelijst.'],
         ['Per week, Weken','Hoe vaak per week en hoeveel weken. Hoeft maar op één rij per schema. Leeg bij een nieuw schema = 3× per week, 4 weken.'],
         ['Oefening','Verplicht. Kies uit de lijst: de oefening moet al in de kaartenbak staan.'],
         ['Sets, Herhalingen, Vasthouden (s), Rust (s)','Dosering in dit schema. Leeg = de standaard van de oefeningkaart. Staat de oefening al in het schema, dan worden alleen de ingevulde velden aangepast.']];
       impMaakBestand(X,IMP_TEKST.sch.bestand,[["Schema's",rijen,[30,9,7,32,6,12,15,9]],['Uitleg',uitleg,[40,110]]],
-        [["Schema's",S.schemas.map(s=>s.name)],['Oefeningen',k]],[[`A2:A${R}`,'A',S.schemas.length],[`D2:D${R}`,'B',k.length]]);
+        [["Schema's",S.schemas.map(s=>s.name)],['Oefeningen',k]],[[`A2:A${R}`,'A'],[`D2:D${R}`,'B']]);
       return;
     }
     const cat=(naam,i)=>impCatBestaat(naam)||ct.find(c=>impNorm(c).startsWith(impNorm(naam)))||ct[i%ct.length];
@@ -260,12 +261,12 @@ function impVoorbeeld(soort){
       ['Glute bridge',cat('Kracht',2),3,12,3,45,'Billen aanspannen bovenin.',S.schemas.slice(1,3).map(x=>x.name).join('; ')||IMP_GEEN],
       ['Wandelen',cat('Conditie',3),1,1,0,0,'15 minuten in eigen tempo.',IMP_GEEN]];
     const uitleg=[['Kolom','Uitleg'],['Oefening','Verplicht. Bestaat de oefening al (zelfde naam), dan wordt de kaart bijgewerkt.'],
-      ['Categorie',`Verplicht bij een nieuwe oefening. Kies uit de lijst (${ct.join(', ')}) of typ een nieuwe naam: die categorie wordt dan aangemaakt. Bij een bestaande oefening mag hij leeg blijven.`],
+      ['Categorie',`Verplicht bij een nieuwe oefening. Kies uit de lijst (${ct.join(', ')}) of typ een nieuwe naam: die categorie wordt dan aangemaakt. Zet je een nieuwe categorie onderaan in het blad Lijsten, dan staat hij meteen in de keuzelijst. Bij een bestaande oefening mag hij leeg blijven.`],
       ['Sets, Herhalingen','Hele getallen. Leeg bij een nieuwe kaart = 3 sets, 10 herhalingen.'],
       ['Vasthouden (s), Rust (s)','Seconden. Leeg bij een nieuwe kaart = 0 en 30.'],['Instructie','Tekst die het kind ziet.'],
-      ['Schema',`Optioneel. Kies ${IMP_GEEN} (of laat leeg) voor geen schema, kies een schema uit de lijst, of typ een nieuwe naam: dat schema wordt dan aangemaakt. Meerdere schema's scheiden met ;.`]];
+      ['Schema',`Optioneel. Kies ${IMP_GEEN} (of laat leeg) voor geen schema, kies een schema uit de lijst, of typ een nieuwe naam: dat schema wordt dan aangemaakt (ook via het blad Lijsten, dan staat het meteen in de keuzelijst). Meerdere schema's scheiden met ;.`]];
     impMaakBestand(X,IMP_TEKST.oef.bestand,[['Oefeningen',rijen,[30,16,6,12,15,9,45,44]],['Uitleg',uitleg,[24,110]]],
-      [['Categorieën',ct],["Schema's",sch]],[[`B2:B${R}`,'A',ct.length],[`H2:H${R}`,'B',sch.length]]);
+      [['Categorieën',ct],["Schema's",sch]],[[`B2:B${R}`,'A'],[`H2:H${R}`,'B']]);
   }).catch(()=>toast('Voorbeeldbestand kon niet worden gemaakt'));
 }
 
