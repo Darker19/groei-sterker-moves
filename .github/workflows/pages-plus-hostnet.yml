@@ -60,6 +60,8 @@ jobs:
             ./ deploy/
           # GitHub Pages draait geen PHP: de preview krijgt de API niet mee en werkt als demo
           rsync -a --exclude='api/' deploy/ pages/
+          # De preview hoort niet in Google: alleen die kopie krijgt noindex, app.groei-sterker.nl niet
+          find pages -name '*.html' -exec sed -i 's#<head>#<head>\n  <meta name="robots" content="noindex, nofollow">#' {} +
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
