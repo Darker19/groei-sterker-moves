@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for commit summary)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -62,15 +62,17 @@ jobs:
           rsync -a --exclude='api/' deploy/ pages/
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: pages
 
       - name: Upload CI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-dist
           path: deploy
+          # anders gaan .htaccess en api/.htaccess (https, headers, afscherming api/) niet mee naar Hostnet
+          include-hidden-files: true
 
   deploy_pages:
     needs: build
@@ -81,7 +83,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Discord — Groei Sterker Moves op GitHub Pages (nakijken)
         if: success()
@@ -115,7 +117,7 @@ jobs:
       url: https://app.groei-sterker.nl/
     steps:
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: app-dist
           path: site
