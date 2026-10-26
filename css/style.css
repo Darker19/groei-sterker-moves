@@ -161,6 +161,7 @@ textarea{resize:vertical;min-height:60px}
 .imp-st{font-weight:600;white-space:nowrap}
 .st-nieuw .imp-st{color:var(--ok)} .st-bijwerken .imp-st,.st-extra .imp-st{color:var(--accent)}
 .st-fout td{color:var(--muted)} .st-fout .imp-st{color:var(--danger)} .st-fout td small{color:var(--danger)}
+.st-gelijk .imp-st{color:var(--muted)}
 .imp-tabel td.num{white-space:nowrap}
 /* Telefoon: elke rij als blokje in plaats van een brede tabel */
 @media(max-width:600px){
@@ -294,7 +295,7 @@ body:is([data-modus="login"],[data-modus="laden"],[data-modus="client"]) .seg{vi
 .zoekbalk select{flex:1 1 160px;width:auto;background:var(--surface)}
 .pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px;font-size:.9rem;color:var(--muted)}
 .indicatie{display:inline-block;margin-left:8px;font-size:.75rem;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;vertical-align:1px}
-.imp-inst{display:block;color:var(--muted)!important;font-size:.78rem}
+.imp-inst,.imp-was{display:block;color:var(--muted)!important;font-size:.78rem}
 .chips .indicatie{margin-left:0;font-size:.78rem;padding:2px 9px}
 .field .hint{font-size:.78rem;color:var(--muted);font-weight:400}
 /* Schema's verslepen */
