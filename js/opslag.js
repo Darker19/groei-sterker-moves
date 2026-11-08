@@ -15,7 +15,7 @@ if(location.protocol==='http:'&&/(^|\.)groei-sterker\.nl$/.test(location.hostnam
 //   opStatus(fn)       fn('bezig'|'opgeslagen'|'fout'|'conflict'|'uitgelogd')
 // Server: de PHP-API in api/ (Hostnet). Wil je later naar bijvoorbeeld Supabase, dan vervang je alleen dit bestand.
 const Opslag=(()=>{
-  const KEY='rugschema4', FOLD='rugschema-folded2', API='api/';
+  const KEY='rugschema4', FOLD='rugschema-folded2', SESSIE='gs-sessie', API='api/';
   const lees=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}};
   const schrijf=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
   let modus='demo', versie=0, statusFn=()=>{}, timer=null, bezig=false, opnieuw=false, wachtend=false;
@@ -56,8 +56,25 @@ const Opslag=(()=>{
   const online=()=>modus==='server'||modus==='client'||modus==='dev';
   function plan(){if(!online())return;wachtend=true;clearTimeout(timer);timer=setTimeout(verstuur,700)}
   // niet weggaan terwijl er nog iets opgeslagen moet worden
-  addEventListener('beforeunload',e=>{if(online()&&(wachtend||bezig)){e.preventDefault();e.returnValue=''}});
+  addEventListener('beforeunload',e=>{if(online()&&(wachtend||bezig||Object.keys(sessieWacht).length)){e.preventDefault();e.returnValue=''}});
   async function post(actie,data){try{return await api(actie,data)}catch(e){return {status:0,fout:'geen-verbinding'}}}
+
+  // Sessiescherm: voortgang per kind apart versturen, zonder de praktijkgegevens (dus geen conflict met een ander apparaat)
+  const sessieWacht={};let sessieTimer=null, sessieBezig=false;
+  async function verstuurSessie(){
+    if(sessieBezig)return;
+    sessieBezig=true;statusFn('bezig');let fout=false;
+    for(const id of Object.keys(sessieWacht)){
+      const v=sessieWacht[id], r=await post('sessie-voortgang',v);
+      if(r.status===401){sessieBezig=false;modus='login';statusFn('uitgelogd');return}
+      if(r.status===200){if(sessieWacht[id]===v)delete sessieWacht[id]}
+      else if(r.status===0||r.status>=500)fout=true;
+      else{console.warn('Sessie-voortgang geweigerd:',r.fout);delete sessieWacht[id]}
+    }
+    sessieBezig=false;
+    if(fout)statusFn('fout');else if(!Object.keys(sessieWacht).length)statusFn('opgeslagen');
+    if(Object.keys(sessieWacht).length){clearTimeout(sessieTimer);sessieTimer=setTimeout(verstuurSessie,fout?10000:300)}
+  }
 
   return {
     get modus(){return modus},
@@ -82,6 +99,12 @@ const Opslag=(()=>{
     laad,
     async laadMijn(){const r=await post('mijn');if(r.status===401||r.status===403){modus='login';return null}return r.status===200?r:{fout:r.fout||'serverfout'}},
     bewaarVoortgang:v=>{voortgang=v;plan()},
+    get opslaanBezig(){return wachtend||bezig},
+    bewaarSessie:v=>{sessieWacht[v.client_id]=v;clearTimeout(sessieTimer);sessieTimer=setTimeout(verstuurSessie,500)},
+    ontgrendel:wachtwoord=>post('ontgrendel',{wachtwoord}),
+    // alleen de id's van de kinderen in de sessie; bij herladen blijft de tablet op het sessiescherm
+    laadSessie:()=>{const s=lees(SESSIE);return Array.isArray(s)?s:null},
+    bewaarSessieLijst:ids=>{try{ids?schrijf(SESSIE,ids):localStorage.removeItem(SESSIE)}catch(e){}},
     accounts:()=>post('accounts'),
     accountMaak:(client_id,login)=>post('account-maak',{client_id,login}),
     accountReset:client_id=>post('account-reset',{client_id}),

@@ -340,3 +340,18 @@ body:is([data-modus="login"],[data-modus="laden"],[data-modus="client"]) .seg{vi
 .installeer p{margin:2px 0 8px;font-size:.92rem}
 .login .installeer{margin:0}
 .installeer .btn{flex:0 0 auto}
+
+/* Sessiescherm: de kinderen die er zijn tikken op hun naam */
+body[data-kiosk] .seg,body[data-kiosk] #uitloggen,body[data-kiosk] #versie{display:none!important}
+.kiosk{margin-top:28px;display:flex;flex-direction:column;gap:10px;text-align:center}
+.kiosk-namen{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:14px}
+.kiosk-kind{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:130px;padding:16px;background:var(--surface);color:var(--ink);border:2px solid var(--line);border-radius:18px;font-family:var(--body);cursor:pointer;touch-action:manipulation}
+.kiosk-kind:active{transform:scale(.98)}
+.kiosk-kind.klaar{border-color:var(--ok)}
+.kiosk-naam{font-size:1.6rem;font-weight:700;overflow-wrap:anywhere}
+.kiosk-stand{font-size:.95rem;color:var(--muted)}
+.kiosk-kind.klaar .kiosk-stand{color:var(--ok);font-weight:600}
+.kiosk-voet{margin-top:34px}
+.kiosk-terug{margin-top:18px}
+.sessie-lijst{max-height:min(50vh,420px);overflow:auto}
+.link-row:disabled{opacity:.55;cursor:default}

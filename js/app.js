@@ -9,7 +9,7 @@ const catRank=cid=>{const c=S.cards.find(x=>x.id===cid);return c?S.cats.findInde
 const sortItems=sc=>sc.items.sort((a,b)=>catRank(a.card)-catRank(b.card));
 let catFilter='Alle';
 // Zoeken en pagina's (kaartenbak 20 kaarten, schema's 5 per pagina); cliënten: zoeken plus filters op schema en indicatie
-const zoek={lib:'',sch:'',cli:'',ind:''}, pagina={lib:0,sch:0}, PER={lib:20,sch:5};
+const zoek={lib:'',sch:'',cli:'',ind:'',sessie:''}, pagina={lib:0,sch:0}, PER={lib:20,sch:5};
 let cliSchema='', cliInd='';
 const zoekNorm=v=>String(v??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const past=(teksten,q)=>!q.trim()||teksten.some(t=>zoekNorm(t).includes(zoekNorm(q.trim())));
@@ -67,6 +67,7 @@ function gebruikGegevens(g,afgevinkt){
   allSchemas().forEach(sortItems);
   // nieuwe database: de beginoefeningen en -schema's meteen opslaan, zodat cliënten (ook testcliënten) ze kunnen laden
   if(modus==='server'&&!(g&&g.cards))save();
+  herstelSessie();
 }
 // Ingelogde cliënt: een mini-praktijk met alleen het eigen schema, zodat client() hetzelfde werkt
 function gebruikMijn(r){
@@ -87,6 +88,7 @@ async function laadMijn(){
 let view='ther', activeClient='c1', fbClient='c1', editSchema=null, editItem=null, sheet=null, linkCard=null, catBeheer=null;
 const saveFold=()=>Opslag.bewaarIngeklapt(folded);
 const save=()=>{
+  if(kioskActief()){sessieBewaar();return}
   if(modus==='client'){const c=activeClient, d=today();   // cliënt: alleen de eigen voortgang van vandaag
     Opslag.bewaarVoortgang({datum:d,afgevinkt:done[c+':'+d]||{},beoordelingen:S.ratings.filter(r=>r.c===c&&r.d===d).map(({e,hard,fun})=>({e,hard,fun}))});return}
   allSchemas().forEach(sortItems);Opslag.bewaarGegevens(S);Opslag.bewaarAfgevinkt(done)};
@@ -110,16 +112,18 @@ function snapshot(){const before=JSON.stringify(S);return ()=>{S=JSON.parse(befo
 
 function render(){
   document.body.dataset.modus=modus;
+  document.body.toggleAttribute('data-kiosk',kioskActief());
   $('#uitloggen').hidden=!['server','client','dev','fout'].includes(modus);
   voetTekst();
   if(modus==='laden'){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">Laden…</p>`;return}
   if(modus==='login'){$('#app').innerHTML=loginHtml();$('#overlay').innerHTML='';return}
   if(modus==='fout'){$('#app').innerHTML=`<p class="empty" style="margin-top:40px;text-align:center">De gegevens kunnen nu niet geladen worden. Probeer het later opnieuw.</p>`;$('#overlay').innerHTML='';return}
   if(modus==='client'){$('#app').innerHTML=client();$('#overlay').innerHTML='';return}
+  if(kioskActief()){$('#app').innerHTML=kioskHtml();$('#overlay').innerHTML=kioskOverlay();schermAan();return}
   $('#v-ther').setAttribute('aria-pressed',view==='ther');
   $('#v-cli').setAttribute('aria-pressed',view==='cli');
   $('#app').innerHTML=demoBalk()+(view==='ther'?therapist():client());
-  $('#overlay').innerHTML=sheet?sheetHtml():linkCard?linkHtml():imp?importHtml():catBeheer?catBeheerHtml():indBeheer?indBeheerHtml():devBeheer?devHtml():'';
+  $('#overlay').innerHTML=sessieKies?sessieKiesHtml():sheet?sheetHtml():linkCard?linkHtml():imp?importHtml():catBeheer?catBeheerHtml():indBeheer?indBeheerHtml():devBeheer?devHtml():'';
 }
 const demoBalk=()=>modus==='demo'?`<p class="demo-balk" role="note"><b>Demo</b> · ${serverMelding?esc(serverMelding)+' ':''}Gegevens worden alleen in deze browser bewaard. Gebruik geen echte namen.</p>`
   :modus==='dev'?`<p class="demo-balk" role="note"><b>Ontwikkelaar</b> · Je ziet de echte oefeningen en schema's met je eigen testcliënten. Alleen de testcliënten worden opgeslagen; wijzigingen aan oefeningen en schema's niet (herladen zet ze terug).</p>`:'';
@@ -155,7 +159,7 @@ async function inloggen(){
   gebruikGegevens(g.gegevens,g.afgevinkt);view='ther';render();laadAccounts();
 }
 async function uitloggen(){
-  await Opslag.uitloggen();modus='login';gebruiker=null;S=structuredClone(seed);done={};accounts={};accNieuw={};accFout={};devBeheer=null;
+  await Opslag.uitloggen();sessieWissen();modus='login';gebruiker=null;S=structuredClone(seed);done={};accounts={};accNieuw={};accFout={};devBeheer=null;
   sheet=linkCard=imp=catBeheer=null;editSchema=editItem=null;opslagStatus='';render();
 }
 Opslag.opStatus(st=>{
@@ -234,6 +238,7 @@ function therapist(){
     &&(!fInd||indNorm(c.indicatie)===indNorm(fInd)&&(fSub==null||indNorm(c.subcategorie)===indNorm(fSub))));
   return `<div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h1>Praktijkoverzicht</h1>
     <p class="lede">Sleep oefenkaarten naar een schema, of klik op een kaart om hem te koppelen. Sleep ze terug of naar de prullenbak om ze eruit te halen.</p></div>
+    <button class="btn small" data-act="sessie-open" style="flex:0 0 auto">Sessie starten</button>
     ${modus==='demo'?'<button class="btn danger small" data-act="reset-demo" style="flex:0 0 auto">Voorbeelddata herstellen</button>':''}
     ${modus==='server'?'<button class="btn ghost small" data-act="dev-open" style="flex:0 0 auto">Ontwikkelaar-account</button>':''}
     ${modus==='dev'&&!heeftTestClienten()?'<button class="btn ghost small" data-act="test-clienten" style="flex:0 0 auto">+ Testcliënten</button>':''}</div>
@@ -387,7 +392,7 @@ function client(){
   if(!c)return `<p class="empty" style="margin-top:20px">Er zijn nog geen cliënten.</p>`;
   activeClient=c.id;
   const s=effective(c), first=esc(c.name.split(' ')[0]);
-  const picker=modus==='client'?`<div style="margin-top:20px"></div>${installHtml()}`:`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
+  const picker=kioskActief()?kioskTerugHtml():modus==='client'?`<div style="margin-top:20px"></div>${installHtml()}`:`<label class="field" style="max-width:320px;margin-top:20px"><span>Voorbeeld: bekijk als</span>
     <select id="cli-pick" data-act="pick">${S.clients.map(x=>`<option value="${x.id}" ${x.id===c.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>`;
   if(!s)return picker+`<div class="panel" style="margin-top:16px;max-width:720px"><h2>Hoi ${first}!</h2><p class="empty">Je fysiotherapeut zet binnenkort je oefeningen voor je klaar.</p></div>`+(modus==='client'?`<div style="margin-top:16px;max-width:720px">${mijnAccountHtml()}</div>`:'');
   const key=c.id+':'+today(), d=done[key]||{};

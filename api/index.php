@@ -20,6 +20,9 @@
 //   GET  mijn                             -> {client, schema, kaarten, cats, vandaag}  (alleen het eigen schema)
 //   POST voortgang {datum, afgevinkt, beoordelingen}
 //   POST mijn-wachtwoord {oud, wachtwoord}  eigen wachtwoord wijzigen (de gebruikersnaam kan alleen de therapeut kiezen)
+// Sessiescherm (therapeut en ontwikkelaar):
+//   POST sessie-voortgang {client_id, datum, afgevinkt, beoordelingen}  zelfde opslag als voortgang, namens een eigen cliënt
+//   POST ontgrendel {wachtwoord}          sessiescherm verlaten; foute pogingen tellen mee voor de inlogbeperking
 require __DIR__ . '/lib.php';
 
 $actie = $_GET['a'] ?? '';
@@ -302,10 +305,7 @@ if ($actie === 'mijn') {
   ]);
 }
 
-if ($actie === 'voortgang') {
-  eis_app_verzoek();
-  $g = eis_client();
-  $in = invoer();
+function bewaar_voortgang($client_id, $in) {
   $datum = $in['datum'] ?? '';
   if (!geldige_datum($datum)) antwoord(['fout' => 'ongeldige-datum'], 400);
   $af = [];
@@ -319,7 +319,41 @@ if ($actie === 'voortgang') {
   }
   if (count($af) > 200 || count($bo) > 200) antwoord(['fout' => 'te-groot'], 413);
   db()->prepare('REPLACE INTO client_dagen (client_id, datum, afgevinkt, beoordelingen, gewijzigd) VALUES (?, ?, ?, ?, ?)')
-      ->execute([$g['client_id'], $datum, versleutel(json_encode($af ?: new stdClass())), versleutel(json_encode($bo)), nu()]);
+      ->execute([$client_id, $datum, versleutel(json_encode($af ?: new stdClass())), versleutel(json_encode($bo)), nu()]);
+  antwoord(['ok' => true]);
+}
+
+if ($actie === 'voortgang') {
+  eis_app_verzoek();
+  $g = eis_client();
+  bewaar_voortgang($g['client_id'], invoer());
+}
+
+// Sessiescherm: de ingelogde therapeut slaat op namens een van de eigen cliënten
+if ($actie === 'sessie-voortgang') {
+  eis_app_verzoek();
+  $g = eis_therapeut_of_ontwikkelaar();
+  $in = invoer();
+  $id = (string)($in['client_id'] ?? '');
+  eis_eigen_client($g, $id);
+  bewaar_voortgang($id, $in);
+}
+
+// Sessiescherm verlaten: wachtwoord van de ingelogde therapeut controleren
+if ($actie === 'ontgrendel') {
+  eis_app_verzoek();
+  $g = eis_therapeut_of_ontwikkelaar();
+  $in = invoer();
+  $db = db();
+  $q = $db->prepare('SELECT COUNT(*) FROM inlogpogingen WHERE (ip = ? OR email = ?) AND tijd > ?');
+  $q->execute([client_ip(), $g['email'], nu('-' . POGING_MINUTEN . ' minutes')]);
+  if ((int)$q->fetchColumn() >= MAX_POGINGEN) antwoord(['fout' => 'te-vaak'], 429);
+  $q = $db->prepare('SELECT wachtwoord FROM gebruikers WHERE id = ?');
+  $q->execute([$g['id']]);
+  if (!password_verify((string)($in['wachtwoord'] ?? ''), $q->fetchColumn())) {
+    $db->prepare('INSERT INTO inlogpogingen (ip, email, tijd) VALUES (?, ?, ?)')->execute([client_ip(), $g['email'], nu()]);
+    antwoord(['fout' => 'onjuist'], 401);
+  }
   antwoord(['ok' => true]);
 }
 
