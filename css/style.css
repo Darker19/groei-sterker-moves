@@ -355,3 +355,6 @@ body[data-kiosk] .seg,body[data-kiosk] #uitloggen,body[data-kiosk] #versie{displ
 .kiosk-terug{margin-top:18px}
 .sessie-lijst{max-height:min(50vh,420px);overflow:auto}
 .link-row:disabled{opacity:.55;cursor:default}
+/* Op het sessiescherm lopen de oefeningen even breed door als de bovenbalk */
+body[data-kiosk] .wrap{max-width:1212px}
+body[data-kiosk] .hero{max-width:none}
